@@ -30,3 +30,5 @@ VALID 24 homes, 106 evidence rows, 3 source runs
 ```
 
 The live snapshot has no route records yet; Gates Hillman walking qualification therefore remains unknown until the geographic worker computes routes. The observed public listing dates and prices are point-in-time evidence, not a guarantee of current vacancy.
+
+The second live refresh was a real HTTP retrieval (not fixture replay). SHA-256 comparisons showed CMU changed (`bbd64339…` to `fa67b7c1…`) and Lobos changed (`b7cc983e…` to `b43fd1c8…`), while Reinhold was unchanged (`aa92a891…` on both captures). The final parser count remained 10/12/2; unchanged Reinhold facts retain their new observation timestamp in the seed rather than being treated as newly changed inventory.
