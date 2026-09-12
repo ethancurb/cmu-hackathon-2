@@ -108,7 +108,7 @@ type Criteria = {
   moveIn: null; leaseMonths: null; // flexible; timing is display/readiness-only in v1
   mustHaveAmenities: string[]; niceToHaveAmenities: string[];
   requiredIncludedUtilities: UtilityName[];
-  sort: 'personal_rent' | 'walk' | 'unresolved_costs' | 'observed_at';
+  sort: 'smallest_change' | 'personal_rent' | 'walk' | 'unresolved_costs' | 'observed_at';
 };
 type ConstraintResult = {
   key: string; outcome: 'pass' | 'fail' | 'unknown';

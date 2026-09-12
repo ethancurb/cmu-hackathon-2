@@ -123,7 +123,7 @@ export const CriteriaSchema = z.object({
   personalRentCap: CentsSchema, allocation: z.object({ occupants: z.number().int().positive(), kind: z.enum(['equal', 'custom']), personalShareBps: z.number().int().gte(1).lte(10000).nullable() }).strict(),
   bedrooms: z.number().nonnegative(), minBathrooms: z.number().nonnegative(), propertyTypes: z.array(z.enum(['house', 'apartment', 'room', 'other'])).min(1), maxWalkSeconds: z.number().nonnegative(),
   moveIn: z.null(), leaseMonths: z.null(), mustHaveAmenities: z.array(z.string().min(1)), niceToHaveAmenities: z.array(z.string().min(1)), requiredIncludedUtilities: z.array(UtilityNameSchema),
-  sort: z.enum(['personal_rent', 'walk', 'unresolved_costs', 'observed_at']),
+  sort: z.enum(['smallest_change', 'personal_rent', 'walk', 'unresolved_costs', 'observed_at']),
 }).strict().superRefine((criteria, ctx) => {
   const invalidEqual = criteria.allocation.kind === 'equal' && criteria.allocation.personalShareBps !== null;
   const invalidCustom = criteria.allocation.kind === 'custom' && criteria.allocation.personalShareBps === null;
@@ -173,7 +173,7 @@ export const SEED_CRITERIA: Criteria = CriteriaSchema.parse({
   destination: { id: 'destination:gates-hillman', version: 'osm-node-1704796692-v1', label: 'Gates Hillman — mapped entrance', coordinate: { lat: 40.4440338, lon: -79.9445593 }, evidenceIds: ['destination:gates-hillman:osm'], caveat: 'Mapped entrance; physical entrance verification is pending.' },
   personalRentCap: 120000, allocation: { occupants: 2, kind: 'equal', personalShareBps: null }, bedrooms: 2, minBathrooms: 2,
   propertyTypes: ['house', 'apartment'], maxWalkSeconds: 1200, moveIn: null, leaseMonths: null,
-  mustHaveAmenities: [], niceToHaveAmenities: [], requiredIncludedUtilities: [], sort: 'personal_rent',
+  mustHaveAmenities: [], niceToHaveAmenities: [], requiredIncludedUtilities: [], sort: 'smallest_change',
 });
 
 const isSearchIndexOnly = (ids: string[], evidence: Map<string, Evidence>) => ids.length > 0 && ids.every((id) => evidence.get(id)?.channel === 'search_index');
