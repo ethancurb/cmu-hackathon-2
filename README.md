@@ -1,6 +1,6 @@
-# address. housing decision workspace
+# OneStop — housing research, in one place
 
-`address.` helps a renter search across fragmented housing sources, compare the
+OneStop helps a renter search across fragmented housing sources, compare the
 daily consequences of each home, and see which small compromise unlocks another
 option. The seeded demonstration is a Pittsburgh search around Carnegie Mellon.
 

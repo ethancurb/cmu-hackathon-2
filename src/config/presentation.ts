@@ -1,5 +1,5 @@
 export const presentation = {
-  wordmark: 'address',
+  wordmark: 'OneStop',
   title: 'Find a place that fits your life.',
   listPercent: 58,
   mapPercent: 42,
