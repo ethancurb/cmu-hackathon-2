@@ -111,7 +111,7 @@ describe('buildDigest', () => {
     ],
     nearby: [{ id: 'osm:node:1', name: 'Fudi Asian Mart', category: 'supermarket', coordinate: { lat: 40.44, lon: -79.95 }, distanceMeters: 228.7, distanceBasis: 'straight_line', walkSeconds: null, evidenceIds: [] }],
     transit: [
-      { originStopId: 's1', originStopName: 'Fifth Ave', distanceMeters: 80, distanceBasis: 'straight_line', routeShortName: '61C', headsign: 'Downtown', destinationStopId: 's9', servesDestination: true, serviceDate: '2026-09-12', window: '08:00-10:00', feedVersion: 'v1', evidenceIds: [] },
+      { originStopId: 's1', originStopName: 'Fifth Ave', distanceMeters: 80, distanceBasis: 'straight_line', routeShortName: '61C', headsign: 'Downtown', destinationStopId: 's9', servesDestination: true, serviceDate: '2026-09-12', window: '08:00-10:00', feedVersion: 'v1', evidenceIds: [], destinationVersion: SEED_CRITERIA.destination.version },
       { originStopId: 's2', originStopName: 'Fifth Ave', distanceMeters: 80, distanceBasis: 'straight_line', routeShortName: '61C', headsign: 'Oakland', destinationStopId: null, servesDestination: false, serviceDate: '2026-09-12', window: '08:00-10:00', feedVersion: 'v1', evidenceIds: [] },
     ],
   });
@@ -126,7 +126,13 @@ describe('buildDigest', () => {
   });
 
   test('deduplicates transit routes', () => {
-    expect(digestHome(withContext).transit).toEqual([{ route: '61C', servesDestination: true }]);
+    expect(digestHome(withContext, SEED_CRITERIA.destination.version).transit).toEqual([{ route: '61C', servesDestination: true }]);
+    expect(digestHome(withContext, 'another-destination').transit).toEqual([{ route: '61C', servesDestination: false }]);
+  });
+
+  test('does not turn assumed amenities into confirmed ones', () => {
+    const assumed = { ...withContext, amenities: [{ ...withContext.amenities[0]!, fact: { ...withContext.amenities[0]!.fact, state: 'assumed' as const } }] };
+    expect(digestHome(assumed).amenities).toEqual([]);
   });
 
   test('omits rent and walk so the model cannot second-guess a core dial', () => {

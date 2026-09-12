@@ -30,7 +30,7 @@ export function NicheGroup({ query, ranked, snapshot, criteria, busy, degraded, 
     <div className="niche-heading">
       <span className="niche-title"><Sparkles size={14}/> <span className="eyebrow">Your request</span> <strong>“{query}”</strong></span>
       {busy
-        ? <span className="niche-status"><span className="pulse-dot"/> Asking the niche assistant…<button className="plain-button niche-cancel" onClick={onCancel}>Cancel</button></span>
+        ? <span className="niche-status"><span className="pulse-dot"/> Asking Grok…<button className="plain-button niche-cancel" onClick={onCancel}>Cancel</button></span>
         : <span className="niche-status">{!degraded && <span className="mono">{ranked.length} {ranked.length === 1 ? 'match' : 'matches'} · nearest to your requirements first</span>}<button className="icon-button" onClick={onClear} aria-label="Clear this request"><X size={14}/></button></span>}
     </div>
     {!busy && degraded && <p className="niche-note">{degraded}</p>}
@@ -50,7 +50,7 @@ export function NicheGroup({ query, ranked, snapshot, criteria, busy, degraded, 
         <span className="niche-row-verdict">
           <span className="niche-reason">{assessment.reason}</span>
           <span className="niche-tags">
-            <span className={`niche-tier niche-tier-${assessment.provenance}`}>{assessment.provenance === 'listing_data' ? 'From listing data' : 'Model assessment'}</span>
+            <span className={`niche-tier niche-tier-${assessment.provenance}`}>{assessment.provenance === 'listing_data' ? 'Saved evidence · Grok interpretation' : 'Grok interpretation · verify'}</span>
             {assessment.confidence === 'partial' && <span className="niche-partial">Close, not exact</span>}
           </span>
         </span>

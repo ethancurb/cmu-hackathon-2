@@ -28,5 +28,5 @@ export const api = {
   job: (id: string) => json<{ job: Job }>(`/api/jobs/${encodeURIComponent(id)}`),
   import: (sourceId: string, url: string, text: string, criteria: Criteria, snapshotId: string) => json<{ job: Job }>('/api/import', { method: 'POST', body: JSON.stringify({ sourceId, url, text: text.trim() || undefined, criteria, snapshotId }) }),
   // Aborting `signal` cancels the model call server-side; there is no job to poll.
-  niche: (snapshotId: string, query: string, signal: AbortSignal) => json<NicheResult>('/api/niche', { method: 'POST', body: JSON.stringify({ snapshotId, query }), signal }),
+  niche: (snapshotId: string, query: string, signal: AbortSignal, destinationVersion: string) => json<NicheResult>('/api/niche', { method: 'POST', body: JSON.stringify({ snapshotId, query, destinationVersion }), signal }),
 };

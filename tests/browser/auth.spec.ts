@@ -3,6 +3,8 @@ import { expect, test } from '@playwright/test';
 // These tests mock only the same-origin session boundary. They intentionally
 // do not exercise a live Auth0 tenant or hosted credential flow.
 type Session = { status: 'disabled' } | { status: 'anonymous' } | { status: 'authenticated'; user: { sub: string; name?: string; email?: string; emailVerified: boolean } };
+const accountSummary = (page: import('@playwright/test').Page) => page.locator('summary[aria-label="Open account menu"]');
+const savedCount = (page: import('@playwright/test').Page) => page.locator('.shortlist-label > strong');
 
 async function mockSession(page: import('@playwright/test').Page, current: () => Session | 'malformed' | 'failed') {
   await page.route('**/api/session', async route => {
@@ -16,14 +18,14 @@ async function mockSession(page: import('@playwright/test').Page, current: () =>
 test('account menu shows a verified profile and stays compact on mobile', async ({ page }) => {
   await mockSession(page, () => ({ status: 'authenticated', user: { sub: 'auth0|renter', name: 'Mina Renter', email: 'mina@example.test', emailVerified: true } }));
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Open account menu' })).toBeVisible();
-  await page.getByRole('button', { name: 'Open account menu' }).click();
-  await expect(page.getByText('mina@example.test')).toBeVisible();
-  await expect(page.getByText('Email verified')).toBeVisible();
-  await expect(page.getByText('Saved on this browser')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Log out' })).toHaveAttribute('href', '/auth/logout');
+  await expect(accountSummary(page)).toBeVisible();
+  await accountSummary(page).click();
+  await expect(page.locator('.account-popover .account-email')).toHaveText('mina@example.test');
+  await expect(page.locator('.account-popover .account-verified')).toHaveText('Email verified');
+  await expect(page.locator('.account-popover .account-copy')).toHaveText('Saved on this browser');
+  await expect(page.locator('.account-popover a[href="/auth/logout"]')).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole('button', { name: 'Open account menu' })).toBeVisible();
+  await expect(accountSummary(page)).toBeVisible();
   const dimensions = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth }));
   expect(dimensions.width).toBeLessThanOrEqual(dimensions.viewport + 1);
 });
@@ -33,12 +35,12 @@ test('an identity switch restores its own workspace without overwriting the earl
   await mockSession(page, () => session);
   await page.addInitScript(() => localStorage.setItem('onestop-search-v2:account:auth0%7Cuser-b', JSON.stringify({ shortlistIds: ['user-b-only'] })));
   await page.goto('/');
-  await expect(page.getByText('a@example.test')).toBeVisible();
+  await expect(accountSummary(page)).toHaveText('a@example.test');
   const before = await page.evaluate(() => localStorage.getItem('onestop-search-v2:account:auth0%7Cuser-a'));
   expect(before).not.toBeNull();
   session = { status: 'authenticated', user: { sub: 'auth0|user-b', email: 'b@example.test', emailVerified: true } };
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await expect(page.getByText('b@example.test')).toBeVisible();
+  await expect(accountSummary(page)).toHaveText('b@example.test');
   await expect.poll(() => page.evaluate(() => ({
     a: localStorage.getItem('onestop-search-v2:account:auth0%7Cuser-a'),
     b: JSON.parse(localStorage.getItem('onestop-search-v2:account:auth0%7Cuser-b') || '{}').shortlistIds,
@@ -49,13 +51,13 @@ test('a failed or malformed account response leaves the public demo usable and d
   let session: Session | 'malformed' | 'failed' = 'malformed';
   await mockSession(page, () => session);
   await page.goto('/');
-  await expect(page.getByText('Account unavailable')).toBeVisible();
-  await expect(page.getByText('Meets requirements')).toBeVisible();
+  await expect(page.locator('.account-error')).toContainText('Account unavailable');
+  await expect(page.locator('.coverage-primary')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Retry account check' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('onestop-search-v2:guest'))).toBeNull();
   session = 'failed';
   await page.getByRole('button', { name: 'Retry account check' }).click();
-  await expect(page.getByText('Account unavailable')).toBeVisible();
+  await expect(page.locator('.account-error')).toContainText('Account unavailable');
   expect(await page.evaluate(() => localStorage.getItem('onestop-search-v2:guest'))).toBeNull();
 });
 
@@ -65,22 +67,22 @@ test('private-browsing-style inaccessible storage keeps the public demo availabl
   });
   await mockSession(page, () => ({ status: 'anonymous' }));
   await page.goto('/');
-  await expect(page.getByText('Meets requirements')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Open account menu' })).toBeVisible();
+  await expect(page.locator('.coverage-primary')).toBeVisible();
+  await expect(accountSummary(page)).toBeVisible();
 });
 
 test('a failed account recheck preserves the visible workspace while writes are blocked', async ({ page }) => {
   let session: Session | 'failed' = { status: 'authenticated', user: { sub: 'auth0|keep-view', email: 'keep@example.test', emailVerified: false } };
   await mockSession(page, () => session);
   await page.goto('/');
-  const shortlist = page.getByRole('button', { name: /Add .* to shortlist/ }).first();
+  const shortlist = page.locator('.action-button[aria-label*=" to shortlist"]').first();
   await shortlist.click();
-  await expect(page.getByText('1 saved option')).toBeVisible();
+  await expect(savedCount(page)).toHaveText('1 saved option');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('onestop-search-v2:account:auth0%7Ckeep-view'))).not.toBeNull();
   const before = await page.evaluate(() => localStorage.getItem('onestop-search-v2:account:auth0%7Ckeep-view'));
   session = 'failed';
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await expect(page.getByText('Account unavailable')).toBeVisible();
-  await expect(page.getByText('1 saved option')).toBeVisible();
+  await expect(page.locator('.account-error')).toContainText('Account unavailable');
+  await expect(savedCount(page)).toHaveText('1 saved option');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('onestop-search-v2:account:auth0%7Ckeep-view'))).toBe(before);
 });

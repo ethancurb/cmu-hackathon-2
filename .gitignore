@@ -17,3 +17,4 @@ data/seed/placed.json
 playwright-report/
 test-results/
 .cache/
+.vercel/

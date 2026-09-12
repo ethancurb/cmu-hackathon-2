@@ -4,6 +4,9 @@ OneStop helps a renter search across fragmented housing sources, compare the
 daily consequences of each home, and see which small compromise unlocks another
 option. The seeded demonstration is a Pittsburgh search around Carnegie Mellon.
 
+Public demo: **https://onestop-hackcmu.vercel.app**. Deployment and server-only
+Grok configuration are documented in [the deployment runbook](docs/deployment.md).
+
 ## Run the demo
 
 Requirements: Node.js 22.12 or newer.
@@ -30,6 +33,12 @@ browser's criteria, comparison, and shortlist state.
 
 For development, use `npm run dev`; Vite and the API use separate local
 processes, with the API on `http://127.0.0.1:4318`.
+
+Copy `.env.example` to the ignored `.env.local` for optional local configuration.
+`XAI_API_KEY` enables **Ask for anything**, which uses Grok to highlight options
+for a specific preference while preserving the original requirements and their
+exact deviations. Never prefix this key with `VITE_` or commit it. Auth0 account
+code is integrated but requires a configured tenant; guest research works without it.
 
 ## Seeded search
 

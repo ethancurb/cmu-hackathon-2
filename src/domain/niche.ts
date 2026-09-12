@@ -122,7 +122,7 @@ const factValue = <T>(fact: { value: T | null; state: string }): T | null =>
  * Coordinates are included so geography the snapshot does not record — "far from a
  * railroad" — can still be reasoned about, and labelled as a model assessment.
  */
-export function digestHome(home: Home): DigestHome {
+export function digestHome(home: Home, destinationVersion?: string): DigestHome {
   return {
     id: home.id,
     title: factValue(home.title) ?? factValue(home.address) ?? 'Address not stated',
@@ -131,18 +131,18 @@ export function digestHome(home: Home): DigestHome {
     propertyType: factValue(home.propertyType),
     bedrooms: factValue(home.bedrooms),
     bathrooms: factValue(home.bathrooms),
-    amenities: home.amenities.filter((amenity) => amenity.fact.value === true).map((amenity) => amenity.key),
+    amenities: home.amenities.filter((amenity) => factValue(amenity.fact) === true).map((amenity) => amenity.key),
     nearby: home.nearby.map((place) => ({ id: place.id, name: place.name, category: place.category, metres: Math.round(place.distanceMeters) })),
     // A route serves the destination if *any* of its recorded trips does. Collapsing to
     // the last trip seen would silently downgrade a route that does reach the destination.
     transit: [...home.transit.reduce((routes, context) => routes.set(
       context.routeShortName,
-      (routes.get(context.routeShortName) ?? false) || context.servesDestination,
+      (routes.get(context.routeShortName) ?? false) || Boolean(destinationVersion && context.destinationVersion === destinationVersion && context.servesDestination),
     ), new Map<string, boolean>())].map(([route, servesDestination]) => ({ route, servesDestination })),
   };
 }
 
-export const buildDigest = (snapshot: Snapshot): DigestHome[] => snapshot.homes.map(digestHome);
+export const buildDigest = (snapshot: Snapshot, destinationVersion?: string): DigestHome[] => snapshot.homes.map((home) => digestHome(home, destinationVersion));
 
 /** Homes carrying nothing a niche query could be judged against, so recall stays honest. */
 export const homesWithoutJudgeableData = (digest: DigestHome[]): number =>

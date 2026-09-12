@@ -10,6 +10,7 @@ import { SOURCE_REGISTRY } from '../jobs/sources/registry.js';
 import type { ConfigParams } from 'express-openid-connect';
 import { mountAuth } from './auth.js';
 import { assessNiche, type NicheOptions } from './niche.js';
+import { createNicheLimiter, type NicheLimits } from './niche-limits.js';
 
 export type Workflows = {
   discovery: (criteria: Criteria, signal: AbortSignal, progress: (message: string) => void) => Promise<JobOutput>;
@@ -17,7 +18,7 @@ export type Workflows = {
   destinations: (query: string, market: Criteria['market'], signal: AbortSignal) => Promise<Destination[]>;
   import: (sourceId: string, url: string, text: string, signal: AbortSignal, progress: (message: string) => void, context?: { snapshotId: string; criteria: Criteria }) => Promise<JobOutput>;
 };
-export type ApiOptions = { store: SnapshotStore; workflows: Workflows; seed?: Criteria; staticDirectory?: string; discoveryEnabled?: boolean; routingEnabled?: boolean; authConfig?: ConfigParams | null; niche?: NicheOptions };
+export type ApiOptions = { store: SnapshotStore; workflows: Workflows; seed?: Criteria; staticDirectory?: string; discoveryEnabled?: boolean; routingEnabled?: boolean; authConfig?: ConfigParams | null; niche?: NicheOptions; allowedOrigins?: string[]; allowLoopbackOrigins?: boolean; nicheLimits?: NicheLimits; trustVercelClientIp?: boolean };
 
 const key = (input: unknown) => createHash('sha256').update(JSON.stringify(input)).digest('hex');
 const unavailable = (capability: string) => new AppError('CAPABILITY_UNAVAILABLE', `${capability} is unavailable in this viewing session. Saved research remains usable.`, 503);
@@ -27,6 +28,8 @@ export function createApp(options: ApiOptions) {
   const app = express();
   const jobs = createJobManager(options.store.publish);
   const seed = options.seed ?? SEED_CRITERIA;
+  const allowedOrigins = new Set(options.allowedOrigins ?? []);
+  const admitNiche = options.nicheLimits ? createNicheLimiter(options.nicheLimits) : null;
   app.disable('x-powered-by');
   mountAuth(app, options.authConfig ?? null);
   app.use((request, response, next) => {
@@ -38,8 +41,9 @@ export function createApp(options: ApiOptions) {
       if (origin) {
         try {
           const parsed = new URL(origin);
-          if (!['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)) throw new Error();
-        } catch { return next(new AppError('ORIGIN_DENIED', 'This local research endpoint does not accept cross-site requests.', 403)); }
+          const local = options.allowLoopbackOrigins !== false && ['http:', 'https:'].includes(parsed.protocol) && ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
+          if (parsed.origin !== origin || (!local && !allowedOrigins.has(origin))) throw new Error();
+        } catch { return next(new AppError('ORIGIN_DENIED', 'This endpoint does not accept requests from that site.', 403)); }
       }
       if (request.headers['sec-fetch-site'] === 'cross-site') return next(new AppError('ORIGIN_DENIED', 'Cross-site requests are not accepted.', 403));
     }
@@ -74,9 +78,17 @@ export function createApp(options: ApiOptions) {
   });
   app.get('/api/jobs/:id', (request, response) => response.json({ job: jobs.get(request.params.id) }));
   app.post('/api/niche', async (request, response) => {
-    const body = z.object({ snapshotId: z.string(), query: z.string().trim().min(1).max(200) }).strict().parse(request.body);
+    const body = z.object({ snapshotId: z.string(), query: z.string().trim().min(1).max(200), destinationVersion: z.string().min(1).max(200).optional() }).strict().parse(request.body);
     const current = await options.store.loadCurrent();
     if (body.snapshotId !== current.id) throw new AppError('STALE_SNAPSHOT', 'New research is available. Refresh the snapshot before a niche search.', 409);
+    // Vercel overwrites this header at its edge. Local servers never trust forwarded IPs.
+    const forwarded = options.trustVercelClientIp ? request.headers['x-vercel-forwarded-for'] ?? request.headers['x-forwarded-for'] : undefined;
+    const client = (typeof forwarded === 'string' ? forwarded.split(',')[0]?.trim() : undefined) || request.socket.remoteAddress || 'unknown';
+    const admission = admitNiche?.(client);
+    if (admission && 'retryAfter' in admission) {
+      response.setHeader('Retry-After', admission.retryAfter);
+      throw new AppError('ASSISTANT_BUSY', 'The demo assistant has reached its request limit. Try again shortly; your housing search remains usable.', 429);
+    }
     // Cancel is the client aborting its fetch: the request closes and the upstream call is
     // aborted with it. No job record, no snapshot publication - a niche result is not research.
     const controller = new AbortController();
@@ -84,10 +96,12 @@ export function createApp(options: ApiOptions) {
     // a client hang-up surfaces as the *response* stream closing before it was written.
     response.on('close', () => { if (!response.writableEnded) controller.abort(); });
     try {
-      response.json(await assessNiche(current, body.query, controller.signal, options.niche));
+      response.json(await assessNiche(current, body.query, controller.signal, { ...options.niche, destinationVersion: body.destinationVersion ?? seed.destination.version }));
     } catch (error) {
       if (controller.signal.aborted) return; // the caller hung up; there is nobody to answer
       throw error;
+    } finally {
+      admission?.release();
     }
   });
   app.post('/api/destination', async (request, response) => {

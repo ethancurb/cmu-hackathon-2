@@ -7,6 +7,7 @@ import { home2400, syntheticSnapshot } from '../fixtures/homes.js';
 import { createSnapshotStore } from '../../server/snapshots.js';
 import { createApp, type Workflows } from '../../server/api.js';
 import type { NicheOptions } from '../../server/niche.js';
+import { assessNiche, nicheCacheKey } from '../../server/niche.js';
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
@@ -116,5 +117,68 @@ describe('POST /api/niche', () => {
     const { ask } = await setup();
     const response = await ask({ snapshotId: 'obsolete', query: 'close to anything' });
     expect(response.status).toBe(409);
+  });
+});
+
+describe('niche model boundary', () => {
+  const freshCache = async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'onestop-niche-boundary-'));
+    cleanups.push(() => rm(directory, { recursive: true, force: true }));
+    return directory;
+  };
+
+  it('preserves AI interpretation alongside validated saved place evidence and removes mitigation', async () => {
+    const cacheDirectory = await freshCache();
+    const place = { id: 'osm:node:1', name: 'Fudi Asian Mart', category: 'supermarket', coordinate: { lat: 40.44, lon: -79.95 }, distanceMeters: 229, distanceBasis: 'straight_line' as const, walkSeconds: null, evidenceIds: [] };
+    const snapshot = syntheticSnapshot([home2400({ nearby: [place] })]);
+    const result = await assessNiche(snapshot, 'near a market', new AbortController().signal, {
+      apiKey: 'test-key', cacheDirectory, fetch: async () => grokReply([matchFor('test:home:2400', {
+        citedPlaceIds: [place.id], reason: 'This market seems relevant to the request.',
+        mitigates: { constraintKey: 'personal_rent', reason: 'Free rent' },
+      })]),
+    });
+    expect(result.assessments[0]).toMatchObject({ provenance: 'listing_data', citedPlaceIds: [place.id], mitigates: null });
+    expect(result.assessments[0]!.reason).toContain('Fudi Asian Mart');
+    expect(result.assessments[0]!.reason).toContain('AI interpretation: This market seems relevant');
+    expect(result.assessments[0]!.reason).not.toContain('Free rent');
+  });
+
+  it('downgrades uncited claims while preserving interpretation and rejects foreign citations', async () => {
+    const cacheDirectory = await freshCache();
+    const snapshot = syntheticSnapshot([home2400()]);
+    const result = await assessNiche(snapshot, 'quiet', new AbortController().signal, {
+      apiKey: 'test-key', cacheDirectory, fetch: async () => grokReply([
+        matchFor('test:home:2400', { reason: 'Unverified fact' }),
+        matchFor('test:home:2400', { citedPlaceIds: ['foreign-place'] }),
+      ]),
+    });
+    expect(result.assessments).toHaveLength(1);
+    expect(result.assessments[0]).toMatchObject({ provenance: 'model_assessment', confidence: 'partial', citedPlaceIds: [], mitigates: null });
+    expect(result.assessments[0]!.reason).toContain('AI interpretation: Unverified fact');
+  });
+
+  it('accepts only known sourced amenities as listing context', async () => {
+    const cacheDirectory = await freshCache();
+    const amenity = { key: 'hot_tub', label: 'Hot tub', fact: { value: true, state: 'sourced' as const, evidenceIds: ['test:evidence'], method: null, observedAt: null }, scope: 'building' as const };
+    const snapshot = syntheticSnapshot([home2400({ amenities: [amenity] })]);
+    const valid = await assessNiche(snapshot, 'hot tub', new AbortController().signal, {
+      apiKey: 'test-key', cacheDirectory, fetch: async () => grokReply([matchFor('test:home:2400', {
+        citedAmenityKeys: ['hot_tub'], reason: 'A hot tub is advertised.',
+      })]),
+    });
+    expect(valid.assessments[0]).toMatchObject({ provenance: 'listing_data', citedPlaceIds: [] });
+    expect(valid.assessments[0]!.reason).toContain('listed amenity hot tub');
+    const invalid = await assessNiche(snapshot, 'sauna', new AbortController().signal, {
+      apiKey: 'test-key', cacheDirectory, fetch: async () => grokReply([matchFor('test:home:2400', { citedAmenityKeys: ['sauna'] })]),
+    });
+    expect(invalid.assessments).toEqual([]);
+  });
+
+  it('keys cached answers by model, destination and digest', () => {
+    const digest = [{ id: 'one' }];
+    const base = nicheCacheKey('quiet', 'snapshot', { digest, model: 'model-a', destinationVersion: 'gates' });
+    expect(nicheCacheKey('quiet', 'snapshot', { digest, model: 'model-b', destinationVersion: 'gates' })).not.toBe(base);
+    expect(nicheCacheKey('quiet', 'snapshot', { digest, model: 'model-a', destinationVersion: 'other' })).not.toBe(base);
+    expect(nicheCacheKey('quiet', 'snapshot', { digest: [{ id: 'two' }], model: 'model-a', destinationVersion: 'gates' })).not.toBe(base);
   });
 });

@@ -11,12 +11,14 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { NicheResult, Snapshot } from '../src/domain/schema.js';
+import type { NicheAssessment, NicheResult, Snapshot } from '../src/domain/schema.js';
 import { NicheResultSchema } from '../src/domain/schema.js';
 import { buildDigest, homesWithoutJudgeableData } from '../src/domain/niche.js';
 
 const CACHE_ROOT = join(process.cwd(), 'data', 'cache', 'niche');
-const DEFAULT_TIMEOUT_MS = 105_000; // mirrors the bounded worker in server/cli.ts
+const DEFAULT_TIMEOUT_MS = 45_000;
+const MAX_TIMEOUT_MS = 45_000;
+const CACHE_VERSION = 'niche-evidence-v4-low-effort';
 
 /** What the model must return. Mirrors NicheAssessmentSchema minus homeId-keyed extras. */
 const ModelOutputSchema = z.object({
@@ -27,6 +29,7 @@ const ModelOutputSchema = z.object({
     reason: z.string().min(1).max(400),
     provenance: z.enum(['listing_data', 'model_assessment']),
     citedPlaceIds: z.array(z.string()),
+    citedAmenityKeys: z.array(z.string()).default([]),
     mitigates: z.object({ constraintKey: z.string().min(1), reason: z.string().min(1).max(400) }).nullable(),
   })),
 }).strict();
@@ -46,6 +49,7 @@ const RESPONSE_SCHEMA = {
           reason: { type: 'string', maxLength: 400 },
           provenance: { type: 'string', enum: ['listing_data', 'model_assessment'] },
           citedPlaceIds: { type: 'array', items: { type: 'string' } },
+          citedAmenityKeys: { type: 'array', items: { type: 'string' } },
           mitigates: {
             anyOf: [
               { type: 'null' },
@@ -58,7 +62,7 @@ const RESPONSE_SCHEMA = {
             ],
           },
         },
-        required: ['homeId', 'matches', 'confidence', 'reason', 'provenance', 'citedPlaceIds', 'mitigates'],
+        required: ['homeId', 'matches', 'confidence', 'reason', 'provenance', 'citedPlaceIds', 'citedAmenityKeys', 'mitigates'],
         additionalProperties: false,
       },
     },
@@ -77,8 +81,9 @@ Rules:
 - Return one assessment per home that MATCHES the request. Omit homes that do not match or
   that you cannot judge. Never invent places, amenities, or transit the digest does not list.
 - provenance is "listing_data" when the judgement rests on digest entries; cite the nearby
-  place ids you used in citedPlaceIds. Use "model_assessment" when it rests on your own
-  knowledge of the area (e.g. geography near the coordinates); then citedPlaceIds is [].
+  place ids in citedPlaceIds or exact amenity keys in citedAmenityKeys. Use "model_assessment"
+  when it rests on your own knowledge of the area (e.g. geography near the coordinates);
+  then both citation arrays are empty.
 - confidence is "strong" for a direct satisfaction of the request, "partial" when you are
   stretching (a related cuisine, an adjacent category). The reason string is shown to the
   renter verbatim - one plain sentence, name the place or fact it rests on, and for partial
@@ -89,6 +94,7 @@ Rules:
   This is context for the renter, not a verdict; the application never changes its checks.`;
 
 export type NicheOptions = {
+  destinationVersion?: string;
   apiKey?: string;
   apiUrl?: string;
   model?: string;
@@ -98,19 +104,20 @@ export type NicheOptions = {
   now?: () => Date;
 };
 
-const degraded = (query: string, snapshot: Snapshot, reason: string, model: string, now: Date): NicheResult => ({
+const degraded = (query: string, snapshot: Snapshot, reason: string, model: string, now: Date, destinationVersion?: string): NicheResult => ({
   query, snapshotId: snapshot.id, assessments: [], model, generatedAt: now.toISOString(),
-  degraded: reason, homesWithoutData: homesWithoutJudgeableData(buildDigest(snapshot)),
+  degraded: reason, homesWithoutData: homesWithoutJudgeableData(buildDigest(snapshot, destinationVersion)),
 });
 
-export const nicheCacheKey = (query: string, snapshotId: string): string =>
-  createHash('sha256').update(`${query.trim().toLowerCase()}|${snapshotId}`).digest('hex').slice(0, 24);
+export const nicheCacheKey = (query: string, snapshotId: string, context: { digest?: unknown; model?: string; destinationVersion?: string } = {}): string =>
+  createHash('sha256').update(JSON.stringify([CACHE_VERSION, query.trim().toLowerCase(), snapshotId, context.model, context.destinationVersion, context.digest])).digest('hex').slice(0, 24);
 
 export async function assessNiche(snapshot: Snapshot, query: string, signal: AbortSignal, options: NicheOptions = {}): Promise<NicheResult> {
   const now = (options.now ?? (() => new Date()))();
   const model = options.model ?? process.env.XAI_MODEL ?? 'grok-4.6';
   const cacheDirectory = options.cacheDirectory ?? CACHE_ROOT;
-  const cachePath = join(cacheDirectory, `${nicheCacheKey(query, snapshot.id)}.json`);
+  const digest = buildDigest(snapshot, options.destinationVersion);
+  const cachePath = join(cacheDirectory, `${nicheCacheKey(query, snapshot.id, { digest, model, destinationVersion: options.destinationVersion })}.json`);
 
   try {
     const cached = NicheResultSchema.parse(JSON.parse(await readFile(cachePath, 'utf8')));
@@ -118,11 +125,12 @@ export async function assessNiche(snapshot: Snapshot, query: string, signal: Abo
   } catch { /* cache miss */ }
 
   const apiKey = options.apiKey ?? process.env.XAI_API_KEY;
-  if (!apiKey) return degraded(query, snapshot, 'The niche assistant is not configured in this session (no API key). Saved results and core filters remain fully usable.', model, now);
+  if (!apiKey) return degraded(query, snapshot, 'The niche assistant is not configured in this session (no API key). Saved results and core filters remain fully usable.', model, now, options.destinationVersion);
 
-  const digest = buildDigest(snapshot);
   const body = {
     model,
+    reasoning_effort: 'low',
+    max_tokens: 4096,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: `Renter's request: ${JSON.stringify(query)}\n\nHomes:\n${JSON.stringify(digest)}` },
@@ -136,23 +144,40 @@ export async function assessNiche(snapshot: Snapshot, query: string, signal: Abo
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify(body),
-      signal: AbortSignal.any([signal, AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS)]),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(Math.min(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS))]),
     });
-    if (!response.ok) return degraded(query, snapshot, `The niche assistant is unavailable right now (HTTP ${response.status}). Core filters remain fully usable.`, model, now);
+    if (!response.ok) return degraded(query, snapshot, `The niche assistant is unavailable right now (HTTP ${response.status}). Core filters remain fully usable.`, model, now, options.destinationVersion);
     const payload = await response.json() as { choices?: { message?: { content?: string } }[] };
     const content = payload.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') return degraded(query, snapshot, 'The niche assistant returned no usable answer. Core filters remain fully usable.', model, now);
+    if (typeof content !== 'string') return degraded(query, snapshot, 'The niche assistant returned no usable answer. Core filters remain fully usable.', model, now, options.destinationVersion);
 
     const parsed = ModelOutputSchema.safeParse(JSON.parse(content));
-    if (!parsed.success) return degraded(query, snapshot, 'The niche assistant answered in an unexpected shape and its answer was discarded. Core filters remain fully usable.', model, now);
+    if (!parsed.success) return degraded(query, snapshot, 'The niche assistant answered in an unexpected shape and its answer was discarded. Core filters remain fully usable.', model, now, options.destinationVersion);
 
     // Only matching verdicts for homes this snapshot actually contains; one per home.
-    const homeIds = new Set(snapshot.homes.map((home) => home.id));
+    const homes = new Map(digest.map((home) => [home.id, home]));
     const seen = new Set<string>();
-    const assessments = parsed.data.assessments.filter((assessment) => {
-      if (!assessment.matches || !homeIds.has(assessment.homeId) || seen.has(assessment.homeId)) return false;
+    const assessments = parsed.data.assessments.flatMap<NicheAssessment>((assessment) => {
+      const home = homes.get(assessment.homeId);
+      if (!assessment.matches || !home || seen.has(assessment.homeId)) return [];
+      const cited = assessment.citedPlaceIds.map((id) => home.nearby.find((place) => place.id === id));
+      if (cited.some((place) => !place) || assessment.citedAmenityKeys.some((key) => !home.amenities.includes(key))) return [];
       seen.add(assessment.homeId);
-      return true;
+      const places = cited.filter((place): place is NonNullable<typeof place> => Boolean(place));
+      const details = [
+        ...places.map((place) => `${place.name} (${place.category}, ${place.metres} m straight-line)`),
+        ...assessment.citedAmenityKeys.map((key) => `listed amenity ${key.replaceAll('_', ' ')}`),
+      ];
+      const explanation = `AI interpretation: ${assessment.reason}`;
+      if (assessment.provenance === 'listing_data' && details.length) {
+        const context = ` Saved context: ${details.join('; ').slice(0, 140)}. Verify whether it meets your request.`;
+        return [{ homeId: assessment.homeId, matches: true, confidence: assessment.confidence,
+          provenance: 'listing_data' as const, citedPlaceIds: [...new Set(assessment.citedPlaceIds)],
+          reason: `${explanation.slice(0, 400 - context.length)}${context}`,
+          mitigates: null }];
+      }
+      return [{ homeId: assessment.homeId, matches: true, confidence: 'partial' as const, provenance: 'model_assessment' as const,
+        citedPlaceIds: [], reason: explanation.slice(0, 400), mitigates: null }];
     });
 
     const result: NicheResult = {
@@ -163,7 +188,7 @@ export async function assessNiche(snapshot: Snapshot, query: string, signal: Abo
     return result;
   } catch (error) {
     if (signal.aborted) throw error; // the caller cancelled; nothing to respond to
-    if (error instanceof Error && error.name === 'TimeoutError') return degraded(query, snapshot, 'The niche assistant took too long and was stopped. Core filters remain fully usable.', model, now);
-    return degraded(query, snapshot, 'The niche assistant could not be reached. Core filters remain fully usable.', model, now);
+    if (error instanceof Error && error.name === 'TimeoutError') return degraded(query, snapshot, 'The niche assistant took too long and was stopped. Core filters remain fully usable.', model, now, options.destinationVersion);
+    return degraded(query, snapshot, 'The niche assistant could not be reached. Core filters remain fully usable.', model, now, options.destinationVersion);
   }
 }

@@ -1,6 +1,6 @@
 # Housing project: guiding brief
 
-Current working name: **OneStop**, proposed by the user and applied provisionally while naming is discussed. The name emphasizes bringing housing research into one place.
+Project name: **OneStop**. The user confirmed consolidating the name change with the account and Grok branches on main. The name emphasizes bringing housing research into one place.
 
 This is the canonical product direction, established with the user on September 12, 2026. It precedes the detailed design, implementation plan, and build. Read it alongside `hackcmu-intel/AGENT_BRIEF.md`. The intelligence pack supplies competition context; this file supplies the replacement project's purpose.
 

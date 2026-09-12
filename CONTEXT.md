@@ -1,6 +1,6 @@
 # Domain glossary
 
-Shared vocabulary for `address.`. Terms are defined here; field-level types live in
+Shared vocabulary for OneStop. Terms are defined here; field-level types live in
 [docs/CONTRACTS.md](docs/CONTRACTS.md), product direction in [PROJECT.md](PROJECT.md).
 
 This file is a glossary only. No implementation detail, no schema, no code.

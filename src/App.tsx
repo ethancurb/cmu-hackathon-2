@@ -35,7 +35,8 @@ export default function App() {
   const [shortlistIds, setShortlistIds] = useState<string[]>([]);
   const [shortlistMeta, setShortlistMeta] = useState<Record<string, SavedHomeLabel>>({});
   const [job, setJob] = useState<Job | null>(null);
-  const [nicheResult, setNicheResult] = useState<NicheResult | null>(null);
+  const [nicheResult, setNicheResult] = useState<(NicheResult & { destinationVersion: string }) | null>(null);
+  const [nicheError, setNicheError] = useState<string | null>(null);
   const [nicheBusy, setNicheBusy] = useState(false);
   const nicheAbortRef = useRef<AbortController | null>(null);
   const [notice, setNotice] = useState('');
@@ -215,23 +216,26 @@ export default function App() {
     }).catch(() => { /* immediate validated client result remains usable */ });
   }, [snapshot, criteria]);
 
-  // One model call per (niche query, snapshot); the server caches by the same key. Core-dial
-  // edits change neither dependency, so they re-rank the cached verdicts without a call.
+  // Destination changes invalidate commute context. Numeric preference edits reuse verdicts.
   const nicheQuery = criteria?.nicheQuery?.trim() || null;
   useEffect(() => {
     nicheAbortRef.current?.abort();
-    if (!nicheQuery || !snapshot) { setNicheResult(null); setNicheBusy(false); return; }
+    setNicheError(null);
+    setNicheResult(null);
+    if (!nicheQuery || !snapshot || !criteria || !currentMarketHasResearch) { setNicheBusy(false); return; }
+    const destinationVersion = criteria.destination.version;
     const controller = new AbortController();
     nicheAbortRef.current = controller;
     setNicheBusy(true);
-    api.niche(snapshot.id, nicheQuery, controller.signal)
-      .then(result => { if (!controller.signal.aborted) { setNicheResult(result); setNicheBusy(false); } })
-      .catch(e => { if (!controller.signal.aborted) { setNicheResult(null); setNicheBusy(false); setNotice(`Niche request unavailable: ${e instanceof Error ? e.message : String(e)}. Core filters are unaffected.`); } });
+    api.niche(snapshot.id, nicheQuery, controller.signal, destinationVersion)
+      .then(result => { if (!controller.signal.aborted) { setNicheResult({ ...result, destinationVersion }); setNicheBusy(false); } })
+      .catch(e => { if (!controller.signal.aborted) { setNicheResult(null); setNicheBusy(false); setNicheError(`Grok is unavailable: ${e instanceof Error ? e.message : String(e)}. Your housing search remains usable.`); } });
     return () => controller.abort();
-  }, [nicheQuery, snapshot?.id]);
+  }, [nicheQuery, snapshot?.id, criteria?.destination.version, currentMarketHasResearch]);
 
   const nicheCurrent = nicheResult && snapshot && nicheQuery
     && nicheResult.snapshotId === snapshot.id
+    && nicheResult.destinationVersion === criteria?.destination.version
     && nicheResult.query.trim().toLowerCase() === nicheQuery.toLowerCase() ? nicheResult : null;
   const nicheRanked = useMemo(
     () => nicheCurrent && activeResult && snapshot ? rankByCoreCloseness(nicheCurrent.assessments, activeResult.results, snapshot) : [],
@@ -353,7 +357,7 @@ export default function App() {
           {activeResult?.discoveryNeeded && <div className="discovery-needed"><Compass size={18}/><div><strong>More research needed for this search</strong><p>{activeResult.discoveryReason || 'The current research scope does not cover these requirements.'} Existing records are still shown with their evidence.</p></div><button className="plain-button" onClick={startDiscovery} disabled={!bootstrap.capabilities.discovery}>Search now <ArrowRight size={14}/></button></div>}
           {!currentMarketHasResearch && <div className="market-empty"><span className="eyebrow">New market</span><h2>No saved research for {criteria.market.label}, {criteria.market.region}.</h2><p>The Pittsburgh snapshot cannot represent homes in this city. Search supported sources to build a new inventory.</p><button className="plain-button primary-button" onClick={startDiscovery} disabled={!bootstrap.capabilities.discovery}>Find homes here <ArrowRight size={16}/></button></div>}
           {activeResult && <>
-            {nicheQuery && <NicheGroup query={nicheQuery} ranked={nicheRanked} snapshot={snapshot} criteria={criteria} busy={nicheBusy} degraded={nicheCurrent?.degraded ?? null} homesWithoutData={nicheCurrent?.homesWithoutData ?? 0} selectedId={selectedHomeId} onSelect={selectHome} onCancel={cancelNiche} onClear={clearNiche} onHover={setHoveredId}/>}
+            {nicheQuery && <NicheGroup query={nicheQuery} ranked={nicheRanked} snapshot={snapshot} criteria={criteria} busy={nicheBusy} degraded={nicheError ?? nicheCurrent?.degraded ?? null} homesWithoutData={nicheCurrent?.homesWithoutData ?? 0} selectedId={selectedHomeId} onSelect={selectHome} onCancel={cancelNiche} onClear={clearNiche} onHover={setHoveredId}/>}
             {activeResult.counts.matches === 0 && <div className="zero-banner"><strong>No options meet all requirements in this snapshot.</strong><span>{activeResult.counts.needsVerification} need evidence for one or more requirements; {activeResult.counts.nearMatches} have a known deviation. The search has not been relaxed.</span></div>}
             {activeResult.counts.matches === 0 && <Alternatives alternatives={activeResult.alternatives} criteria={criteria} snapshot={snapshot} onApply={patch} onSelectHome={selectHome}/>} 
             {ordered.length === 0 && <div className="list-empty"><Search size={22}/><h3>No homes recorded in this snapshot.</h3><p>See Coverage for searched sources and limits, or run more discovery. Unknown listing data is never filled in to make a match.</p></div>}
