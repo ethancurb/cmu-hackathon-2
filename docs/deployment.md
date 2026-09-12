@@ -65,9 +65,28 @@ working deployment. No Git history rewrite is needed.
 
 ## Accounts
 
-Auth0 code from `feature/onestop-auth0` is merged, but the user paused tenant
-authorization. No live signup or login is claimed. It remains disabled until
-the required server variables in `.env.example` are configured. Production's
-Auth0 base URL would be `https://onestop-hackcmu.vercel.app`, with callback
-`https://onestop-hackcmu.vercel.app/auth/callback`. Account-specific shortlists
-are saved on that browser; there is no application database or cross-device sync.
+The user resumed Auth0 activation after the public Grok demo was working.
+The OneStop Regular Web Application and email/password connection are configured.
+Production now has `AUTH0_ENABLED=true`, `AUTH0_ISSUER_BASE_URL`,
+`AUTH0_CLIENT_ID`, `AUTH0_BASE_URL`, and the sensitive `AUTH0_CLIENT_SECRET`
+and `AUTH0_SECRET` variables. Credentials were transferred through process stdin
+into Vercel; no values were written into repository files or command output.
+
+Use authorization-code flow with `client_secret_basic` and explicitly configure
+the Auth0 application's `jwt_configuration.alg` as `RS256`, matching the SDK.
+The production base is `https://onestop-hackcmu.vercel.app`; the exact callback is
+`https://onestop-hackcmu.vercel.app/auth/callback`. Allowed logout URLs are that
+base origin with and without a trailing slash. No wildcard callback is required.
+
+Enable the database connection for this client through
+`PATCH /api/v2/connections/{id}/clients` with
+`[{"client_id":"<OneStop client ID>","status":true}]`. Auth0 retired updates
+through the old connection object's `enabled_clients` field; use the
+[dedicated connection endpoint](https://auth0.com/docs/api/management/v2/connections/patch-clients).
+For clients created through the Management API, explicitly set the token signing
+algorithm: [Auth0 documents the omitted-algorithm behavior](https://support.auth0.com/center/s/article/id-token-returns-incorrect-jwt-signature-algorithm).
+
+Open `/auth/signup` to create a renter account or `/auth/login` to sign in.
+Account-specific shortlists are saved on that browser; there is no application
+database or cross-device sync. See `docs/reviews/auth0-progress.md` for the
+actual live verification result; configuration alone does not prove a login.

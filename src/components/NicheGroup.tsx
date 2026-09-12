@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { ArrowRight, Sparkles, X } from 'lucide-react';
 import type { Criteria, Snapshot } from '../domain/schema.js';
-import type { RankedNicheHome } from '../domain/niche.js';
+import { NICHE_TOLERANCE, type RankedNicheHome } from '../domain/niche.js';
 import { decisionReason, dollars, homeRoute, minute, title } from '../lib/view.js';
 
 type Props = {
@@ -15,55 +16,44 @@ type Props = {
   onSelect: (id: string) => void;
   onCancel: () => void;
   onClear: () => void;
+  onRetry: () => void;
   onHover: (id: string | null) => void;
 };
 
-/**
- * The highlighted group above the ordinary results: homes the model judged to satisfy the
- * renter's plain-language request, ordered by how close they come to the core requirements.
- * Purely additive — every home here also keeps its normal place in the list below, and a
- * core miss stays a visible core miss.
- */
-export function NicheGroup({ query, ranked, snapshot, criteria, busy, degraded, homesWithoutData, selectedId, onSelect, onCancel, onClear, onHover }: Props) {
+export function NicheGroup({ query, ranked, snapshot, criteria, busy, degraded, homesWithoutData, selectedId, onSelect, onCancel, onClear, onRetry, onHover }: Props) {
+  const [expanded, setExpanded] = useState(false);
   const homes = new Map(snapshot.homes.map(home => [home.id, home]));
-  return <section className="niche-group" aria-label={`Homes matching your request: ${query}`}>
+  const shown = expanded ? ranked : ranked.slice(0, 3);
+  return <section className="niche-group" aria-label={`Grok suggestions for: ${query}`} aria-busy={busy}>
     <div className="niche-heading">
-      <span className="niche-title"><Sparkles size={14}/> <span className="eyebrow">Your request</span> <strong>“{query}”</strong></span>
-      {busy
-        ? <span className="niche-status"><span className="pulse-dot"/> Asking Grok…<button className="plain-button niche-cancel" onClick={onCancel}>Cancel</button></span>
-        : <span className="niche-status">{!degraded && <span className="mono">{ranked.length} {ranked.length === 1 ? 'match' : 'matches'} · nearest to your requirements first</span>}<button className="icon-button" onClick={onClear} aria-label="Clear this request"><X size={14}/></button></span>}
+      <span className="niche-title"><Sparkles size={14}/><span className="eyebrow">Grok suggestions</span></span>
+      <div className="niche-status">{busy
+        ? <button className="plain-button niche-cancel" onClick={onCancel}>Cancel</button>
+        : <button className="niche-clear" onClick={onClear} aria-label="Clear this request"><X size={13}/> Clear</button>}
+      </div>
     </div>
-    {!busy && degraded && <p className="niche-note">{degraded}</p>}
-    {!busy && !degraded && ranked.length === 0 && <p className="niche-note">Nothing in this snapshot matched the request within a small distance of your requirements. Options outside that band remain in the list below with their exact deviations.</p>}
-    {!busy && !degraded && ranked.map(({ homeId, assessment, result }) => {
-      const home = homes.get(homeId);
-      if (!home) return null;
-      const share = result.cost.personalBaseRent;
-      const route = homeRoute(snapshot, result);
-      const misses = decisionReason(result, criteria);
-      return <button type="button" key={homeId} className={`niche-row ${selectedId === homeId ? 'is-selected' : ''}`} onClick={() => onSelect(homeId)}
-        onMouseEnter={() => onHover(homeId)} onMouseLeave={() => onHover(null)} aria-label={`Open ${title(home)} details`}>
-        <span className="niche-row-main">
-          <strong>{title(home)}</strong>
-          <span className="niche-row-facts mono">{share == null ? 'share unknown' : `${dollars(share)}/mo`} · {route?.status === 'ok' ? `${minute(route.durationSeconds)} walk` : 'walk unknown'}</span>
-        </span>
-        <span className="niche-row-verdict">
-          <span className="niche-reason">{assessment.reason}</span>
-          <span className="niche-tags">
-            <span className={`niche-tier niche-tier-${assessment.provenance}`}>{assessment.provenance === 'listing_data' ? 'Saved evidence · Grok interpretation' : 'Grok interpretation · verify'}</span>
-            {assessment.confidence === 'partial' && <span className="niche-partial">Close, not exact</span>}
-          </span>
-        </span>
-        <span className="niche-row-fit">
-          {result.fit === 'matches'
-            ? <span className="niche-fit-ok">Meets stated requirements</span>
-            : <span className="niche-fit-miss">{misses || 'Needs verification'}</span>}
-          {assessment.mitigates && <span className="niche-mitigation">May offset the {assessment.mitigates.constraintKey.replaceAll('_', ' ')} gap: {assessment.mitigates.reason}</span>}
-        </span>
-        <ArrowRight size={15} className="niche-row-arrow"/>
-      </button>;
-    })}
-    {!busy && !degraded && homesWithoutData > 0 && <p className="niche-footnote">{homesWithoutData} {homesWithoutData === 1 ? 'home carries' : 'homes carry'} no nearby, transit, amenity, or location detail to judge this request against; they are not counted either way.</p>}
-    {!busy && <p className="niche-footnote">Assessments interpret saved snapshot data{degraded ? '' : ' and are labelled with what they rest on'}. Your stated requirements are never relaxed by a match here.</p>}
+    <h2 className="niche-query">“{query}”</h2>
+    {busy ? <p className="niche-note niche-progress" role="status"><span className="pulse-dot"/> Checking saved listing and nearby-place evidence…</p>
+      : degraded ? <div className="niche-note"><p>{degraded}</p><button className="plain-button" onClick={onRetry}>Try again</button></div>
+      : <>
+        <p className="niche-summary">{ranked.length > 0 ? `${ranked.length} possible ${ranked.length === 1 ? 'fit' : 'fits'} · smallest compromises first.` : 'No suggestions within this comparison range.'} Your filters are unchanged.</p>
+        {ranked.length === 0 && <p className="niche-note">The saved evidence may not cover this request. Try a different feature or place with Ask Grok; all researched homes remain below.</p>}
+        {shown.map(({ homeId, assessment, result }) => {
+          const home = homes.get(homeId);
+          if (!home) return null;
+          const share = result.cost.personalBaseRent;
+          const route = homeRoute(snapshot, result);
+          const misses = decisionReason(result, criteria);
+          return <button type="button" key={homeId} className={`niche-row ${selectedId === homeId ? 'is-selected' : ''}`} onClick={() => onSelect(homeId)}
+            onMouseEnter={() => onHover(homeId)} onMouseLeave={() => onHover(null)} aria-label={`Open ${title(home)} details`} aria-describedby={`niche-facts-${homeId} niche-fit-${homeId} niche-verdict-${homeId}`}>
+            <span className="niche-row-main"><strong>{title(home)}</strong><span id={`niche-facts-${homeId}`} className="niche-row-facts">{share == null ? 'Rent share unknown' : `${dollars(share)}/mo for your share`} · {route?.status === 'ok' ? `${minute(route.durationSeconds)} walk` : 'Walk unknown'}</span></span>
+            <span id={`niche-fit-${homeId}`} className="niche-row-fit">{result.fit === 'matches' ? <span className="niche-fit-ok">Meets stated requirements</span> : <span className="niche-fit-miss">{misses || 'Needs verification'}</span>}</span>
+            <span id={`niche-verdict-${homeId}`} className="niche-row-verdict"><span className="niche-reason">{assessment.reason}</span><span className="niche-tags"><span className={`niche-tier niche-tier-${assessment.provenance}`}>{assessment.provenance === 'listing_data' ? 'Saved evidence · Grok interpretation' : 'Grok interpretation · verify'}</span>{assessment.confidence === 'partial' && <span className="niche-partial">Partial preference match</span>}</span>{assessment.mitigates && <span className="niche-mitigation">Possible trade-off: {assessment.mitigates.reason}</span>}</span>
+            <ArrowRight size={15} className="niche-row-arrow"/>
+          </button>;
+        })}
+        {ranked.length > 3 && <button className="niche-expand" onClick={() => setExpanded(value => !value)} aria-expanded={expanded}>{expanded ? 'Show fewer suggestions' : `Show all ${ranked.length} suggestions`}</button>}
+      </>}
+    {!busy && <details className="niche-method"><summary>How suggestions are selected</summary><p>Grok interprets the saved evidence. A suggestion can be up to {Math.round(NICHE_TOLERANCE.relative.personal_rent * 100)}% over your rent cap, {Math.round(NICHE_TOLERANCE.relative.walk * 100)}% over your walking limit, or {NICHE_TOLERANCE.absolute.bathrooms} bathroom below your minimum. Other known requirement failures stay out of this group; missing facts remain unverified. These bounds only select suggestions and do not change your requirements.</p>{homesWithoutData > 0 && <p>{homesWithoutData} homes lack enough saved amenity, nearby-place, transit, or location detail for this request.</p>}<p>All {snapshot.homes.length} researched homes remain in the main list, with their original fit and source evidence.</p></details>}
   </section>;
 }

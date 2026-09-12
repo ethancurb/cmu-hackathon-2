@@ -1,14 +1,15 @@
-# Auth0 — paused for submission
+# Auth0 — live and verified
 
-The user authorized one-shot implementation, then explicitly said to return to terminal authorization later while prioritizing the submission form. Pause auth work until they resume it.
+The user resumed authentication work after the public OneStop/Grok deployment and completed a fresh CLI device authorization. The user subsequently confirmed signing into their own OneStop account on the live site.
 
-- Implementation from `feature/onestop-auth0` was merged into root/main alongside OneStop branding and Alex's `feat/grok-custom-filters` branch. The Auth0 worktree remains preserved.
-- Tenant authorization and live authentication remain paused; the integrated application works in guest mode.
-- New server authentication uses `express-openid-connect` 3.4.0, code/query flow, encrypted HTTP-only cookies, `/api/session`, protected `/api/account`, and hosted login/signup/logout routes.
-- Frontend account menu and account-scoped browser storage are implemented. Luna implemented storage, Terra implemented frontend, and Sol reviewed the change. The review's transient session-failure reset issue was fixed, along with storage getter exceptions and an 8-second session timeout.
-- Baseline: 92 tests passed. Integrated suite: 107 tests passed. Seven new auth API tests include a controlled OIDC provider exercising the actual SDK's token/signature/cookie flow. This is not proof of a live Auth0 login.
-- Production build and integrated suite passed. All five browser auth/identity/failure-recovery tests passed against the merged application on port 4175. These use a mocked session boundary, not a live Auth0 tenant.
-- Auth0 CLI 1.35.0 was installed. User reported dashboard sign-in, but browser automation was unavailable and desktop-control permission was absent. The CLI device authorization remained incomplete; `auth0 tenants list --json` reported missing config. The waiting CLI login was interrupted at the user's request to return later. The old device code must not be reused.
-- No Auth0 application, provider credentials, `.env.local`, or demo end-user account has been created. No passwords or tokens were received or printed. No application database was added.
+- The OneStop Regular Web Application uses authorization-code flow, Basic client authentication, and explicitly configured RS256 ID-token signing. The email/password database connection is enabled for OneStop through Auth0's current dedicated connection-client endpoint.
+- The exact callback is `https://onestop-hackcmu.vercel.app/auth/callback`. Login, signup, logout, authenticated `/api/session`, and protected `/api/account` use the merged Express Auth0 SDK integration. No application database was added.
+- All six Auth0 server environment variables are configured in Vercel Production. Client and session secrets are Sensitive/Secret variables. Credentials were captured in process memory and transferred through stdin; no values were printed, written to repository files, or sent to the browser. The existing server-only xAI key was preserved.
+- A genuine browser check against the public deployment passed: real Auth0 signup form, password login, code callback, authenticated account endpoint, reload retaining identity and a saved home, provider logout, anonymous session and HTTP 401 account endpoint after logout, then a second password login restoring the same saved workspace. This check did not mock Auth0 or `/api/session`.
+- The live check used a temporary test identity with a random password retained only in memory. Verification-email delivery was disabled and the identity was deleted after each run. The user's own account was not modified.
+- Cookies were observed with Secure, HttpOnly, and SameSite=Lax attributes. Searches/shortlists remain scoped to the account on this browser; there is no cross-device synchronization.
+- The first provider roundtrip exposed an omitted signing-algorithm setting in the API-created Auth0 client. Explicit RS256 resolved it. The subsequent browser check exposed the account dropdown behind the criteria/coverage overlays. Commit `9f80368` raises that menu above those overlays, and the existing browser test now verifies actual pointer access to Log out on desktop and mobile.
 
-Resume: obtain a fresh CLI browser authorization; configure a Regular Web Application and email/password connection using the saved plan; keep credentials in Vercel Secrets or ignored local environment; verify a real Auth0 roundtrip. User confirmation that the dashboard is signed in does not itself authenticate the CLI.
+Verification: production build/typecheck passed; the account-menu regression reproduced the original intercepted click and passed after correction. Full real-provider signup-form/login/reload/logout/relogin verification passed on deployment `dpl_HTycEg1s6mFisDoM1fHsbo64Cmh2`. Subsequent frontend polish preserves this production Auth0 configuration.
+
+Provider setup and the current connection API are documented in `docs/deployment.md`. Auth0 dashboard administration and the renter's OneStop account are separate sign-ins.

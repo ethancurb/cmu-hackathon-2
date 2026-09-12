@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import type { Criteria, EvaluatedHome, Home, NicheAssessment, Snapshot } from '../domain/schema.js';
-import { destinationName, minute, routeForHome, title } from '../lib/view.js';
+import { destinationName, dollars, minute, routeForHome, title } from '../lib/view.js';
 
-type Props = { snapshot: Snapshot; criteria: Criteria; ordered: { home: Home; result: EvaluatedHome }[]; nicheById?: Map<string, NicheAssessment>; selectedId: string | null; hoveredId: string | null; onSelect: (id: string) => void; onPinDestination: (lat: number, lon: number) => void; pinMode: boolean };
+type Props = { snapshot: Snapshot; criteria: Criteria; ordered: { home: Home; result: EvaluatedHome }[]; nicheById?: Map<string, NicheAssessment>; selectedId: string | null; hoveredId: string | null; onSelect: (id: string) => void; onViewDetails?: () => void; onPinDestination: (lat: number, lon: number) => void; pinMode: boolean; cameraResetKey: number };
 
-export function MapPanel({ snapshot, criteria, ordered, nicheById, selectedId, hoveredId, onSelect, onPinDestination, pinMode }: Props) {
+export function MapPanel({ snapshot, criteria, ordered, nicheById, selectedId, hoveredId, onSelect, onViewDetails, onPinDestination, pinMode, cameraResetKey }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
@@ -13,12 +13,35 @@ export function MapPanel({ snapshot, criteria, ordered, nicheById, selectedId, h
   const destinationHandler = useRef(onPinDestination);
   const pinModeRef = useRef(pinMode);
   const allBounds = useRef<L.LatLngBounds | null>(null);
+  const markerByHomeId = useRef(new Map<string, L.Marker>());
   const viewKey = useRef('');
   const [tileError, setTileError] = useState(false);
   const [sizeRevision, setSizeRevision] = useState(0);
   clickHandler.current = onSelect;
   destinationHandler.current = onPinDestination;
   pinModeRef.current = pinMode;
+
+  const citedPlaceIds = selectedId ? (nicheById?.get(selectedId)?.citedPlaceIds || []) : [];
+  const citedPlaceKey = citedPlaceIds.join('|');
+  const focusMap = () => {
+    const instance = map.current;
+    if (!instance) return;
+    const dest = criteria.destination.coordinate;
+    const home = selectedId ? snapshot.homes.find(item => item.id === selectedId) : undefined;
+    const origin = home?.coordinate.value;
+    if (!home || !origin) { instance.setView([dest.lat, dest.lon], 15, { animate: false }); return; }
+    const route = routeForHome(snapshot, home, criteria);
+    const path: [number, number][] = route?.status === 'ok' && route.geometry ? route.geometry.coordinates.map(([lon, lat]) => [lat, lon]) : [[origin.lat, origin.lon], [dest.lat, dest.lon]];
+    for (const placeId of citedPlaceIds) {
+      const place = home.nearby.find(item => item.id === placeId);
+      if (place) path.push([place.coordinate.lat, place.coordinate.lon]);
+    }
+    const size = instance.getSize();
+    const captionHeight = host.current?.parentElement?.querySelector<HTMLElement>('.map-caption')?.offsetHeight ?? 0;
+    const topPadding = Math.min(Math.max(72, captionHeight + 20), Math.max(72, Math.floor(size.y * .4)));
+    const rightPadding = citedPlaceIds.length ? Math.min(150, Math.max(72, Math.floor(size.x * .3))) : 72;
+    instance.fitBounds(L.latLngBounds(path), { paddingTopLeft: [72, topPadding], paddingBottomRight: [rightPadding, 72], maxZoom: 15, animate: false });
+  };
 
   useEffect(() => {
     if (!host.current || map.current) return;
@@ -33,6 +56,7 @@ export function MapPanel({ snapshot, criteria, ordered, nicheById, selectedId, h
     const resize = new ResizeObserver(entries => {
       const width = entries[0]?.contentRect.width ?? 0;
       if (width === 0) { wasHidden = true; return; }
+      instance.invalidateSize({ animate: false });
       if (wasHidden) { wasHidden = false; instance.invalidateSize(); viewKey.current = ''; setSizeRevision(revision => revision + 1); }
     });
     resize.observe(host.current);
@@ -52,20 +76,45 @@ export function MapPanel({ snapshot, criteria, ordered, nicheById, selectedId, h
     destHtml.append(destSquare, destLabel);
     const destIcon = L.divIcon({ className: 'destination-marker', html: destHtml, iconSize: [132, 28], iconAnchor: [10, 14] });
     const popup = document.createElement('div'); popup.textContent = `${criteria.destination.label} · mapped point ${dest.lat.toFixed(6)}, ${dest.lon.toFixed(6)}`;
-    L.marker([dest.lat, dest.lon], { icon: destIcon, keyboard: true, title: `${criteria.destination.label}, mapped point` }).addTo(group).bindPopup(popup);
+    L.marker([dest.lat, dest.lon], { icon: destIcon, keyboard: true, title: `${criteria.destination.label}, mapped point`, bubblingMouseEvents: false }).addTo(group).bindPopup(popup);
+    const locations = new Map<string, { coordinate: { lat: number; lon: number }; items: { home: Home; result: EvaluatedHome; ordinal: number }[] }>();
     ordered.forEach(({ home, result }, index) => {
       const coordinate = home.coordinate.value;
       if (!coordinate) return;
+      const key = `${coordinate.lat},${coordinate.lon}`;
+      const location = locations.get(key) || { coordinate, items: [] };
+      location.items.push({ home, result, ordinal: index + 1 });
+      locations.set(key, location);
+    });
+    markerByHomeId.current.clear();
+    for (const { coordinate, items } of locations.values()) {
       points.push([coordinate.lat, coordinate.lon]);
-      const chosen = home.id === selectedId;
-      const hovered = home.id === hoveredId;
-      const marker = L.divIcon({ className: `home-marker fit-${result.fit} ${nicheById?.has(home.id) ? 'is-niche' : ''} ${chosen ? 'is-selected' : ''} ${hovered ? 'is-hovered' : ''} ${selectedId && !chosen ? 'is-dimmed' : ''}`, html: `<span>${index + 1}</span>`, iconSize: [30,30], iconAnchor: [15,15] });
-      L.marker([coordinate.lat, coordinate.lon], { icon: marker, keyboard: true, title: `${index + 1}. ${title(home)} · ${minute(routeForHome(snapshot, home, criteria)?.durationSeconds)}` }).on('click', () => clickHandler.current(home.id)).addTo(group);
-    });
-    ordered.forEach(({ home }) => {
-      const route = routeForHome(snapshot, home, criteria);
-      if (home.id !== selectedId && route?.status === 'ok' && route.geometry?.coordinates?.length) L.polyline(route.geometry.coordinates.map(([lon, lat]): [number,number] => [lat, lon]), { color: '#606b70', weight: 2, opacity: .48, interactive: false }).addTo(group).bringToBack();
-    });
+      const selectedItem = items.find(item => item.home.id === selectedId);
+      const displayItem = selectedItem || items[0]!;
+      const iconHtml = document.createElement('span');
+      const number = document.createElement('span'); number.textContent = String(displayItem.ordinal);
+      iconHtml.append(number);
+      if (items.length > 1) { const count = document.createElement('small'); count.className = 'home-pin-count'; count.textContent = String(items.length); iconHtml.append(count); }
+      const isNiche = selectedItem ? nicheById?.has(selectedItem.home.id) : items.some(item => nicheById?.has(item.home.id));
+      const icon = L.divIcon({ className: `home-marker fit-${displayItem.result.fit} ${isNiche ? 'is-niche' : ''} ${selectedItem ? 'is-selected' : ''} ${selectedId && !selectedItem ? 'is-dimmed' : ''}`, html: iconHtml, iconSize: [30, 30], iconAnchor: [15, 15] });
+      const label = items.length === 1 ? `${displayItem.ordinal}. ${title(displayItem.home)} · ${minute(routeForHome(snapshot, displayItem.home, criteria)?.durationSeconds)}` : `${items.length} researched options at this location; choose a listing`;
+      const marker = L.marker([coordinate.lat, coordinate.lon], { icon, keyboard: true, title: label, bubblingMouseEvents: false, riseOnHover: true, zIndexOffset: selectedItem ? 1000 : 0 }).addTo(group);
+      for (const item of items) markerByHomeId.current.set(item.home.id, marker);
+      if (items.length === 1) marker.on('click', () => { if (!pinModeRef.current) clickHandler.current(displayItem.home.id); });
+      else {
+        const choices = document.createElement('div'); choices.className = 'map-choice-list';
+        const heading = document.createElement('strong'); heading.textContent = `${items.length} options at this location`; choices.append(heading);
+        for (const item of items) {
+          const button = document.createElement('button'); button.type = 'button'; button.className = 'map-choice';
+          const share = item.result.cost.personalBaseRent == null ? 'share unknown' : `${dollars(item.result.cost.personalBaseRent)} share / month`;
+          button.textContent = `${item.ordinal}. ${title(item.home)} · ${share}`;
+          button.addEventListener('click', () => { map.current?.closePopup(); clickHandler.current(item.home.id); });
+          choices.append(button);
+        }
+        const popup = L.popup({ autoPan: true }).setContent(choices);
+        marker.on('click', () => { if (pinModeRef.current) return; popup.setLatLng(marker.getLatLng()).openOn(instance); });
+      }
+    }
     if (selectedId) {
       const home = snapshot.homes.find(h => h.id === selectedId);
       const route = home && routeForHome(snapshot, home, criteria);
@@ -81,30 +130,30 @@ export function MapPanel({ snapshot, criteria, ordered, nicheById, selectedId, h
         if (!place || !home?.coordinate.value) continue;
         const placeHtml = document.createElement('span'); placeHtml.className = 'niche-place-content';
         const dot = document.createElement('span'); dot.className = 'niche-place-dot';
-        const label = document.createElement('span'); label.className = 'niche-place-label'; label.textContent = `${place.name} \u00b7 ${Math.round(place.distanceMeters)} m`;
+        const label = document.createElement('span'); label.className = 'niche-place-label'; label.textContent = `${place.name} · ${Math.round(place.distanceMeters)} m ${place.distanceBasis === 'walking_route' ? 'walking distance' : 'straight-line'}`;
         placeHtml.append(dot, label);
         L.marker([place.coordinate.lat, place.coordinate.lon], { icon: L.divIcon({ className: 'niche-place-marker', html: placeHtml, iconSize: [150, 24], iconAnchor: [8, 12] }), keyboard: false, interactive: false }).addTo(group);
-        L.polyline([[home.coordinate.value.lat, home.coordinate.value.lon], [place.coordinate.lat, place.coordinate.lon]], { className: 'niche-tie', dashArray: '4 5', weight: 2, opacity: .85, interactive: false }).addTo(group);
-        points.push([place.coordinate.lat, place.coordinate.lon]);
+        if (place.distanceBasis === 'straight_line') L.polyline([[home.coordinate.value.lat, home.coordinate.value.lon], [place.coordinate.lat, place.coordinate.lon]], { className: 'niche-tie', dashArray: '4 5', weight: 2, opacity: .85, interactive: false }).addTo(group);
       }
     }
     allBounds.current = points.length > 1 ? L.latLngBounds(points) : null;
-    const nextViewKey = `${criteria.destination.version}|${selectedId ?? ''}|${ordered.map(x => x.home.id).join(',')}`;
+    const nextViewKey = `${criteria.destination.version}|${selectedId ?? ''}|${ordered.map(x => x.home.id).join(',')}|${citedPlaceKey}|${cameraResetKey}`;
     if (nextViewKey !== viewKey.current) {
       viewKey.current = nextViewKey;
-      const selected = selectedId && snapshot.homes.find(h => h.id === selectedId)?.coordinate.value;
-      if (selected) {
-        const selectedHome = snapshot.homes.find(h => h.id === selectedId);
-        const selectedRoute = selectedHome && routeForHome(snapshot, selectedHome, criteria);
-        const path = selectedRoute?.geometry?.coordinates.map(([lon,lat]): [number,number] => [lat,lon]) || [];
-        instance.fitBounds(L.latLngBounds(path.length ? path : [[dest.lat,dest.lon],[selected.lat,selected.lon]]), { padding: [72, 72], maxZoom: 15, animate: false });
-      }
-      else instance.setView([dest.lat, dest.lon], 15, { animate: false });
+      focusMap();
     }
     requestAnimationFrame(() => instance.invalidateSize());
-  }, [snapshot, criteria, ordered, nicheById, selectedId, hoveredId, sizeRevision]);
+  }, [snapshot, criteria, ordered, nicheById, selectedId, citedPlaceKey, cameraResetKey, sizeRevision]);
+
+  useEffect(() => {
+    const hoveredMarker = hoveredId ? markerByHomeId.current.get(hoveredId) : undefined;
+    for (const marker of new Set(markerByHomeId.current.values())) marker.getElement()?.classList.toggle('is-hovered', marker === hoveredMarker);
+  }, [hoveredId, snapshot, ordered, nicheById, selectedId, citedPlaceKey, cameraResetKey, sizeRevision]);
+
+  useEffect(() => { if (pinMode) map.current?.closePopup(); }, [pinMode]);
 
   const selected = selectedId ? snapshot.homes.find(h => h.id === selectedId) : undefined;
+  const selectedResult = selectedId ? ordered.find(item => item.home.id === selectedId)?.result : undefined;
   const route = selected && routeForHome(snapshot, selected, criteria);
   return <section className={`map-pane ${pinMode ? 'pin-mode' : ''}`} aria-label="Housing map">
     <div ref={host} className="leaflet-host" role="application" aria-label="Map of homes and destination" />
@@ -112,8 +161,10 @@ export function MapPanel({ snapshot, criteria, ordered, nicheById, selectedId, h
     {pinMode && <div className="map-pin-instruction">Choose a point for the new destination</div>}
     <div className="map-caption">
       <span className="map-caption-dot" /> <strong>{destinationName(criteria)}</strong><span className="muted"> mapped entrance</span>
-      {selected && <div className="map-route-summary">{route?.status === 'ok' ? `${minute(route.durationSeconds)} computed foot walk · ${route.distanceMeters == null ? 'distance unknown' : `${(route.distanceMeters / 1000).toFixed(1)} km`}` : 'Walking route unavailable or needs review'}</div>}
-      <button className="map-show-all" onClick={() => { if (map.current && allBounds.current) map.current.fitBounds(allBounds.current, { padding: [56,56], maxZoom: 15, animate: false }); }}>Show all {ordered.filter(x => x.home.coordinate.value).length} mapped options</button>
+      {selected && <div className="map-caption-home"><strong>{title(selected)}</strong><span>{selectedResult?.cost.personalBaseRent == null ? 'Personal share unknown' : `${dollars(selectedResult.cost.personalBaseRent)} personal share / month`}</span></div>}
+      {selected && <div className="map-route-summary">{route?.status === 'ok' ? `${minute(route.durationSeconds)} walk · ${route.distanceMeters == null ? 'distance unknown' : `${(route.distanceMeters / 1000).toFixed(1)} km`}` : 'Walking route unavailable or needs review'}</div>}
+      <div className="map-controls"><button className="map-show-all" onClick={() => { if (map.current && allBounds.current) map.current.fitBounds(allBounds.current, { padding: [56,56], maxZoom: 15, animate: false }); }}>Show all {ordered.filter(x => x.home.coordinate.value).length} mapped options</button><button className="map-focus" onClick={focusMap}>{selected ? 'Focus selected route' : 'Focus destination'}</button></div>
+      {selected && onViewDetails && <button className="map-details-button" onClick={onViewDetails} aria-label={`View details for ${title(selected)}`}>View details</button>}
     </div>
   </section>;
 }

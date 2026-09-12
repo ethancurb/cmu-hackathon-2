@@ -38,6 +38,7 @@ export default function App() {
   const [nicheResult, setNicheResult] = useState<(NicheResult & { destinationVersion: string }) | null>(null);
   const [nicheError, setNicheError] = useState<string | null>(null);
   const [nicheBusy, setNicheBusy] = useState(false);
+  const [nicheAttempt, setNicheAttempt] = useState(0);
   const nicheAbortRef = useRef<AbortController | null>(null);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -49,6 +50,7 @@ export default function App() {
   const [destinationBusy, setDestinationBusy] = useState(false);
   const [pinMode, setPinMode] = useState(false);
   const [mapView, setMapView] = useState(false);
+  const [cameraResetKey, setCameraResetKey] = useState(0);
   const [compareOpen, setCompareOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importUrl, setImportUrl] = useState('');
@@ -231,7 +233,7 @@ export default function App() {
       .then(result => { if (!controller.signal.aborted) { setNicheResult({ ...result, destinationVersion }); setNicheBusy(false); } })
       .catch(e => { if (!controller.signal.aborted) { setNicheResult(null); setNicheBusy(false); setNicheError(`Grok is unavailable: ${e instanceof Error ? e.message : String(e)}. Your housing search remains usable.`); } });
     return () => controller.abort();
-  }, [nicheQuery, snapshot?.id, criteria?.destination.version, currentMarketHasResearch]);
+  }, [nicheQuery, snapshot?.id, criteria?.destination.version, currentMarketHasResearch, nicheAttempt]);
 
   const nicheCurrent = nicheResult && snapshot && nicheQuery
     && nicheResult.snapshotId === snapshot.id
@@ -242,7 +244,7 @@ export default function App() {
     [nicheCurrent, activeResult, snapshot],
   );
   const nicheById = useMemo(() => new Map(nicheRanked.map(entry => [entry.homeId, entry.assessment])), [nicheRanked]);
-  const cancelNiche = () => { nicheAbortRef.current?.abort(); setNicheBusy(false); patch({ nicheQuery: null }); setNotice('Niche request cancelled. Nothing about your search changed.'); };
+  const cancelNiche = () => { nicheAbortRef.current?.abort(); setNicheBusy(false); patch({ nicheQuery: null }); setNotice('Request cancelled. Your housing filters are unchanged.'); };
   const clearNiche = () => { nicheAbortRef.current?.abort(); setNicheBusy(false); patch({ nicheQuery: null }); };
 
   useEffect(() => {
@@ -330,17 +332,17 @@ export default function App() {
     } catch (e) { setNotice(`Map point could not be set: ${e instanceof Error ? e.message : String(e)}`); }
   };
   const openDestination = () => { if (!criteria) return; setMarketCity(criteria.market.label.split('/')[0].trim()); setMarketRegion(criteria.market.region); setDestinationQuery(''); setDestinationCandidates([]); setDestinationOpen(true); };
-  const selectHome = (homeId: string) => {
+  const selectHome = (homeId: string, preserveMapView = false) => {
     if (!selectedHomeId) listScrollRef.current = listRef.current?.scrollTop ?? 0;
     setSelectedHomeId(homeId);
-    setMapView(false);
+    if (!preserveMapView) setMapView(false);
     requestAnimationFrame(() => { const target = document.getElementById(`home-${homeId}`); if (target) target.scrollIntoView({ block: 'center', behavior: 'smooth' }); });
   };
   const backToList = () => { setSelectedHomeId(null); requestAnimationFrame(() => { if (listRef.current) listRef.current.scrollTop = listScrollRef.current; }); };
   const toggleShortlist = (homeId: string) => { const home = homeMap.get(homeId); if (home) setShortlistMeta(meta => ({ ...meta, [homeId]: { title: title(home), url: home.primaryUrl } })); setShortlistIds(ids => ids.includes(homeId) ? ids.filter(x => x !== homeId) : [...ids, homeId]); };
   const toggleCompare = (homeId: string) => setCompareIds(ids => ids.includes(homeId) ? ids.filter(x => x !== homeId) : ids.length < 3 ? [...ids, homeId] : (setNotice('Comparison holds up to three homes. Remove one before adding another.'), ids));
   const runImport = async () => { if (!criteria || !snapshot) return; try { const started = (await api.import(importSource, importUrl, importText, criteria, snapshot.id)).job; jobContextRef.current = { id: started.id, destinationVersion: criteria.destination.version }; setJob(started); setImportOpen(false); setNotice('Checking the supplied listing against source evidence.'); } catch (e) { setNotice(`Import could not start: ${e instanceof Error ? e.message : String(e)}`); } };
-  const resetDemo = () => { const sub = session?.status === 'authenticated' ? session.user.sub : null; const storage = browserStorage(); if (workspaceReady && session && !accountError && storage) clearStored(storage, sub); destinationRef.current = bootstrap?.seed.destination.version || ''; pinMarketRef.current = null; jobContextRef.current = null; setJob(null); setCriteria(bootstrap?.seed || null); setBaseline(bootstrap?.seed || null); setSelectedHomeId(null); setCompareIds([]); setShortlistIds([]); setShortlistMeta({}); setServerResult(null); setNotice(workspaceReady ? 'Saved demo search restored.' : 'Demo search restored. Account storage is unavailable until the account check succeeds.'); };
+  const resetDemo = () => { const sub = session?.status === 'authenticated' ? session.user.sub : null; const storage = browserStorage(); if (workspaceReady && session && !accountError && storage) clearStored(storage, sub); destinationRef.current = bootstrap?.seed.destination.version || ''; pinMarketRef.current = null; jobContextRef.current = null; setJob(null); setPinMode(false); setCameraResetKey(value => value + 1); setCriteria(bootstrap?.seed || null); setBaseline(bootstrap?.seed || null); setSelectedHomeId(null); setCompareIds([]); setShortlistIds([]); setShortlistMeta({}); setServerResult(null); setNotice(workspaceReady ? 'Saved demo search restored.' : 'Demo search restored. Account storage is unavailable until the account check succeeds.'); };
 
   if (error) return <div className="boot-state"><div className="wordmark">{presentation.wordmark}<span>.</span></div><h1>Research is temporarily unavailable.</h1><p>{error}</p><button className="plain-button" onClick={() => location.reload()}>Try again</button></div>;
   if (!bootstrap || !snapshot || !criteria || !baseline) return <div className="boot-state"><div className="wordmark">{presentation.wordmark}<span>.</span></div><h1>Opening saved housing research…</h1><p>Loading the sourced snapshot and its search criteria.</p></div>;
@@ -357,7 +359,7 @@ export default function App() {
           {activeResult?.discoveryNeeded && <div className="discovery-needed"><Compass size={18}/><div><strong>More research needed for this search</strong><p>{activeResult.discoveryReason || 'The current research scope does not cover these requirements.'} Existing records are still shown with their evidence.</p></div><button className="plain-button" onClick={startDiscovery} disabled={!bootstrap.capabilities.discovery}>Search now <ArrowRight size={14}/></button></div>}
           {!currentMarketHasResearch && <div className="market-empty"><span className="eyebrow">New market</span><h2>No saved research for {criteria.market.label}, {criteria.market.region}.</h2><p>The Pittsburgh snapshot cannot represent homes in this city. Search supported sources to build a new inventory.</p><button className="plain-button primary-button" onClick={startDiscovery} disabled={!bootstrap.capabilities.discovery}>Find homes here <ArrowRight size={16}/></button></div>}
           {activeResult && <>
-            {nicheQuery && <NicheGroup query={nicheQuery} ranked={nicheRanked} snapshot={snapshot} criteria={criteria} busy={nicheBusy} degraded={nicheError ?? nicheCurrent?.degraded ?? null} homesWithoutData={nicheCurrent?.homesWithoutData ?? 0} selectedId={selectedHomeId} onSelect={selectHome} onCancel={cancelNiche} onClear={clearNiche} onHover={setHoveredId}/>}
+            {nicheQuery && <NicheGroup key={nicheQuery} query={nicheQuery} ranked={nicheRanked} snapshot={snapshot} criteria={criteria} busy={nicheBusy} degraded={nicheError ?? nicheCurrent?.degraded ?? null} homesWithoutData={nicheCurrent?.homesWithoutData ?? 0} selectedId={selectedHomeId} onSelect={selectHome} onCancel={cancelNiche} onClear={clearNiche} onRetry={() => setNicheAttempt(value => value + 1)} onHover={setHoveredId}/>}
             {activeResult.counts.matches === 0 && <div className="zero-banner"><strong>No options meet all requirements in this snapshot.</strong><span>{activeResult.counts.needsVerification} need evidence for one or more requirements; {activeResult.counts.nearMatches} have a known deviation. The search has not been relaxed.</span></div>}
             {activeResult.counts.matches === 0 && <Alternatives alternatives={activeResult.alternatives} criteria={criteria} snapshot={snapshot} onApply={patch} onSelectHome={selectHome}/>} 
             {ordered.length === 0 && <div className="list-empty"><Search size={22}/><h3>No homes recorded in this snapshot.</h3><p>See Coverage for searched sources and limits, or run more discovery. Unknown listing data is never filled in to make a match.</p></div>}
@@ -366,7 +368,7 @@ export default function App() {
           </>}
         </>}
       </div>
-      <MapPanel snapshot={snapshot} criteria={criteria} ordered={ordered} nicheById={nicheById} selectedId={selectedHomeId} hoveredId={hoveredId} onSelect={selectHome} onPinDestination={pinDestination} pinMode={pinMode}/>
+      <MapPanel snapshot={snapshot} criteria={criteria} ordered={ordered} nicheById={nicheById} selectedId={selectedHomeId} hoveredId={hoveredId} onSelect={homeId => selectHome(homeId, true)} onViewDetails={() => setMapView(false)} cameraResetKey={cameraResetKey} onPinDestination={pinDestination} pinMode={pinMode}/>
     </main>
     <ShortlistRail items={shortlistItems} compareCount={compareIds.length} onCompare={() => setCompareOpen(true)} onRemove={toggleShortlist} onSelect={selectHome}/>
     {compareOpen && <CompareSheet items={compareItems} snapshot={snapshot} criteria={criteria} onClose={() => setCompareOpen(false)} onRemove={toggleCompare}/>}<div className="sr-only" role="status" aria-live="polite">{activeResult ? `${activeResult.counts.matches} options meet requirements, ${activeResult.counts.needsVerification} need verification, ${activeResult.counts.nearMatches} near matches.` : ''}</div>
