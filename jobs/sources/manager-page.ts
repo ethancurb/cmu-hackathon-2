@@ -5,7 +5,7 @@ import { clean, dateValue, evidenceFor, moneyCents, sourced, unknown } from './e
 export function parseReinhold(capture: Capture): ParseResult {
   const $ = load(capture.html); const listings: ObservedListing[] = []; const warnings: string[] = [];
   const property = clean($('h1,h2').filter((_, x) => /Shadyside Commons/i.test($(x).text())).first().text()) || 'Shadyside Commons';
-  const address = clean($('body').text()).match(/\b\d+\s+Amberson\s+Avenue\s+Pittsburgh,\s+PA\s+\d{5}\b/i)?.[0] ?? '401 Amberson Avenue, Pittsburgh, PA 15232';
+  const address = clean($('body').text()).match(/\b\d+\s+Amberson\s+Avenue\s+Pittsburgh,\s+PA\s+\d{5}\b/i)?.[0] ?? '';
   $('.rr-unit-block').each((index, block) => {
     const row = $(block).find('.rr-unit').first(); const cells = row.find('.rr-price-column').map((_, x) => clean($(x).text())).get();
     const type = cells[0] ?? ''; const unit = cells[1] ?? ''; const rentText = cells[2] ?? ''; const availRaw = cells[3] ?? '';
@@ -15,8 +15,8 @@ export function parseReinhold(capture: Capture): ParseResult {
     const rowEvidence = evidenceFor(capture, scopeKey, 'offer', rowExcerpt, `.rr-unit-block:nth-of-type(${index + 1}) .rr-unit`);
     const buildingEvidence = evidenceFor(capture, `reinhold-building-shadyside-commons`, 'building', `${property}; ${address}`, 'property header', true);
     listings.push({
-      id: `reinhold-${unit}`, sourceId: capture.sourceId, sourceFamily: 'direct-manager', url: capture.url, scope: 'unit', buildingKey: buildingEvidence.scopeKey, offerKey: scopeKey, floorPlanKey: `reinhold-plan-${unit}`,
-      scopeKey, title: sourced(`${property} · ${type}`, [rowEvidence.id]), address: sourced(address, [buildingEvidence.id]), unitLabel: sourced(unit, [rowEvidence.id]), propertyType: sourced('apartment', [buildingEvidence.id]),
+      id: `reinhold-${unit}`, sourceId: capture.sourceId, sourceFamily: 'reinhold-residential', url: capture.url, scope: 'unit', buildingKey: buildingEvidence.scopeKey, offerKey: scopeKey, floorPlanKey: `reinhold-plan-${unit}`,
+      scopeKey, title: sourced(`${property} · ${type}`, [rowEvidence.id]), address: address ? sourced(address, [buildingEvidence.id]) : unknown(), unitLabel: sourced(unit, [rowEvidence.id]), propertyType: sourced('apartment', [buildingEvidence.id]),
       bedrooms: beds ? sourced(Number(beds), [rowEvidence.id]) : unknown(), bathrooms: bath ? sourced(Number(bath), [rowEvidence.id]) : unknown(), fullBaths: unknown(), halfBaths: unknown(),
       rent: { basis: 'whole_unit', period: 'month', amount: amount === null ? unknown() : sourced(amount, [rowEvidence.id]), upperAmount: unknown(), kind: amount === null ? 'unknown' : 'exact', semantics: 'base_rent' }, availability: dateValue(availRaw) ? sourced(dateValue(availRaw)!, [rowEvidence.id]) : unknown(), utilities: [], amenities: [], evidence: [rowEvidence, buildingEvidence],
     });

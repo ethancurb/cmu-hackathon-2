@@ -19,7 +19,7 @@ export function parseLobos(capture: Capture): ParseResult {
     const titleEv = evidenceFor(capture, `lobos-building-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, 'building', `${name} ${address}`, '.jet-engine-listing-overlay-wrap h4', true);
     const availability = dateValue(availRaw) ?? (clean(availRaw) || null);
     listings.push({
-      id: `lobos-${unitSlug}`, sourceId: capture.sourceId, sourceFamily: 'direct-manager', url: normalizedUrl, scope: 'unit',
+      id: `lobos-${unitSlug}`, sourceId: capture.sourceId, sourceFamily: 'lobos-management', url: normalizedUrl, scope: 'unit',
       buildingKey: titleEv.scopeKey, offerKey: scopeKey, floorPlanKey: null, scopeKey,
       title: sourced(name, [titleEv.id]), address: sourced(address, [titleEv.id]), unitLabel: sourced(unitSlug, [ev.id]), propertyType: sourced('apartment', [titleEv.id]),
       bedrooms: bed === null ? unknown() : sourced(bed, [ev.id]), bathrooms: bath === null ? unknown() : sourced(bath, [ev.id]), fullBaths: unknown(), halfBaths: unknown(),
@@ -42,9 +42,14 @@ export function parseLobosDetail(capture: Capture): ParseResult {
   const address = addressFirst ? `${addressFirst[1].trim()}, ${addressFirst[3].trim()}` : unitAndAddress?.[2]?.trim() ?? '';
   const availabilityRaw = text.match(/Availability:\s*([^\dA-Z]*Available\s*Now|\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1] ?? text.match(/Availability:\s*(Available Now)/i)?.[1] ?? '';
   if (!layout || amount === null || !address) warnings.push('Lobos detail page did not expose a complete unit row; unknown fields retained');
-  const scopeKey = `lobos-detail-${(unit ?? capture.url.split('/').filter(Boolean).pop() ?? 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  const pageSlug = capture.url.split('/').filter(Boolean).pop() ?? 'unknown';
+  const detailSlug = pageSlug.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const buildingSlug = `${title}-${address}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || detailSlug;
+  const scopeKey = `lobos-detail-${detailSlug}`;
+  const buildingKey = `lobos-building-${buildingSlug}`;
   const ev = evidenceFor(capture, scopeKey, 'offer', `${title}; ${unit ?? ''}; ${address}; ${layout?.[0] ?? ''}; ${rentMatch?.[0] ?? ''}; Availability: ${availabilityRaw}`, 'detail unit summary');
-  const listing: ObservedListing = { id: scopeKey, sourceId: capture.sourceId, sourceFamily: 'direct-manager', url: capture.url, scope: 'unit', buildingKey: scopeKey, offerKey: scopeKey, floorPlanKey: null, scopeKey,
-    title: sourced(title, [ev.id]), address: address ? sourced(address, [ev.id]) : unknown(), unitLabel: unit ? sourced(unit, [ev.id]) : unknown(), propertyType: sourced('apartment', [ev.id]), bedrooms: layout ? sourced(Number(layout[1]), [ev.id]) : unknown(), bathrooms: layout ? sourced(Number(layout[2]), [ev.id]) : unknown(), fullBaths: unknown(), halfBaths: unknown(), rent: { basis: 'whole_unit', period: 'month', amount: amount === null ? unknown() : sourced(amount, [ev.id]), upperAmount: unknown(), kind: amount === null ? 'unknown' : 'exact', semantics: 'base_rent' }, availability: availabilityRaw ? sourced(dateValue(availabilityRaw) ?? availabilityRaw, [ev.id]) : unknown(), utilities: [], amenities: [], evidence: [ev] };
+  const buildingEv = evidenceFor(capture, buildingKey, 'building', `${title}; ${address}`, 'detail property heading', true);
+  const listing: ObservedListing = { id: scopeKey, sourceId: capture.sourceId, sourceFamily: 'lobos-management', url: capture.url, scope: 'unit', buildingKey, offerKey: scopeKey, floorPlanKey: null, scopeKey,
+    title: sourced(title, [buildingEv.id]), address: address ? sourced(address, [buildingEv.id]) : unknown(), unitLabel: unit ? sourced(unit, [ev.id]) : unknown(), propertyType: sourced('apartment', [buildingEv.id]), bedrooms: layout ? sourced(Number(layout[1]), [ev.id]) : unknown(), bathrooms: layout ? sourced(Number(layout[2]), [ev.id]) : unknown(), fullBaths: unknown(), halfBaths: unknown(), rent: { basis: 'whole_unit', period: 'month', amount: amount === null ? unknown() : sourced(amount, [ev.id]), upperAmount: unknown(), kind: amount === null ? 'unknown' : 'exact', semantics: 'base_rent' }, availability: availabilityRaw ? sourced(dateValue(availabilityRaw) ?? availabilityRaw, [ev.id]) : unknown(), utilities: [], amenities: [], evidence: [ev, buildingEv] };
   return { listings: [listing], captures: [capture], warnings };
 }

@@ -46,15 +46,16 @@ export function toHome(observed: ObservedListing, allEvidence: EvidenceRow[]): H
   const utilities = UTILITY_NAMES.map((name) => {
     const sourceUtility = observed.utilities.find((utility) => utility.name === name);
     const ids = sourceUtility?.evidenceIds ?? [];
-    const inclusion = sourceUtility ? canonicalFact({ value: sourceUtility.inclusion, state: sourceUtility.inclusion ? 'sourced' : 'unknown', evidenceIds: ids }, evidence) : canonicalUnknown<'included' | 'separate' | 'partial'>();
-    return { name, inclusion, chargeIds: [], terms: canonicalUnknown<string>(), applicable: sourceUtility ? canonicalFact({ value: true, state: 'sourced', evidenceIds: ids }, evidence) : canonicalUnknown<boolean>() };
+    const inclusion = sourceUtility?.inclusion ? canonicalFact({ value: sourceUtility.inclusion, state: 'sourced', evidenceIds: ids }, evidence) : canonicalUnknown<'included' | 'separate' | 'partial'>();
+    const terms = sourceUtility?.terms ? canonicalFact({ value: sourceUtility.terms, state: 'sourced', evidenceIds: ids }, evidence) : canonicalUnknown<string>();
+    return { name, inclusion, chargeIds: [], terms, applicable: sourceUtility ? canonicalFact({ value: true, state: 'sourced', evidenceIds: ids }, evidence) : canonicalUnknown<boolean>() };
   });
   const title = mapFact(observed.title); const address = mapFact(observed.address); const unitLabel = mapFact(observed.unitLabel);
   return {
     id: observed.id, buildingKey: observed.buildingKey, offerKey: observed.offerKey, floorPlanKey: observed.floorPlanKey, scope: observed.scope, sourceListingIds: [observed.sourceId], primaryUrl: observed.url, lastObservedAt: observed.evidence[0]?.observedAt ?? new Date().toISOString(),
-    title, address, unitLabel, coordinate: canonicalUnknown(), propertyType: mapFact(observed.propertyType), bedrooms: mapFact(observed.bedrooms), bathrooms: mapFact(observed.bathrooms), fullBaths: mapFact(observed.fullBaths), halfBaths: mapFact(observed.halfBaths),
+    title, address, unitLabel, coordinate: observed.coordinate ? mapFact(observed.coordinate) : canonicalUnknown(), propertyType: mapFact(observed.propertyType), bedrooms: mapFact(observed.bedrooms), bathrooms: mapFact(observed.bathrooms), fullBaths: mapFact(observed.fullBaths), halfBaths: mapFact(observed.halfBaths),
     rent: { basis: observed.rent.basis, period: observed.rent.period, amount: mapFact(observed.rent.amount), upperAmount: mapFact(observed.rent.upperAmount), kind: observed.rent.kind, semantics: observed.rent.semantics }, charges: [], utilities,
-    concessions: canonicalUnknown(), availability: mapFact(observed.availability), leaseTerms: canonicalUnknown(), listingStatus: 'observed', amenities: [], reviews: [], nearby: [], transit: [], routeIds: [], photo: null,
+    concessions: observed.concessions ? mapFact(observed.concessions) : canonicalUnknown(), availability: mapFact(observed.availability), leaseTerms: observed.leaseTerms ? mapFact(observed.leaseTerms) : canonicalUnknown(), listingStatus: 'observed', amenities: observed.amenities.map((amenity) => ({ key: amenity.label.toLowerCase().replace(/[^a-z0-9]+/g, '_'), label: amenity.label, fact: canonicalFact({ value: amenity.value, state: amenity.value === null ? 'unknown' : 'sourced', evidenceIds: amenity.evidenceIds }, evidence), scope: 'building' as const })), reviews: [], nearby: [], transit: [], routeIds: [], photo: observed.photo ?? null,
   };
 }
 
@@ -90,9 +91,12 @@ export async function collectSources(criteria: Criteria, onProgress: (message: s
       if (item.source.id === 'lobos-management') {
         const detailUrl = 'https://lobosmanagement.com/units/bentley-apartments-021-a-03/';
         try {
-          const detail = parseLobosDetail(await fetchPublicPage(detailUrl, signal));
+          const detailCapture = await fetchPublicPage(detailUrl, signal);
+          const detail = parseLobosDetail(detailCapture);
           allListings.push(...detail.listings); detail.listings.forEach((listing) => evidence.push(...listing.evidence)); warnings.push(...detail.warnings);
           item.run.pagesFetched += 1; item.run.urlsAttempted.push(detailUrl); item.run.observations += detail.listings.length;
+          captures.push({ sourceId: detailCapture.sourceId, url: detailCapture.url, fetchedAt: detailCapture.fetchedAt, captureHash: detailCapture.captureHash, bytes: Buffer.byteLength(detailCapture.html) });
+          const detailFileName = `${detailCapture.sourceId}-detail-${detailCapture.fetchedAt.replace(/[:.]/g, '-')}.html`; await writeFile(path.join(rawDir, detailFileName), detailCapture.html, 'utf8');
         } catch (error) { warnings.push(`Lobos targeted Shadyside detail: ${error instanceof Error ? error.message : String(error)}`); }
       }
       const capture = item.result.captures[0]; captures.push({ sourceId: capture.sourceId, url: capture.url, fetchedAt: capture.fetchedAt, captureHash: capture.captureHash, bytes: Buffer.byteLength(capture.html) });
@@ -106,7 +110,7 @@ export async function collectSources(criteria: Criteria, onProgress: (message: s
   const observations = [...unique.values()]; const canonicalEvidence = evidence.filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index) as Evidence[];
   const canonicalHomes = observations.map((observation) => toHome(observation, canonicalEvidence));
   const sourceRuns = runs.map((run) => ({ ...run, status: run.status === 'fetched' ? 'imported' as const : run.status, importedHomeIds: run.status === 'fetched' ? observations.filter((observation) => observation.sourceId === run.sourceId).map((observation) => observation.id) : [] }));
-  const researchScopes: ResearchScope[] = [{ marketKey: 'pittsburgh|pa|US', areas: [{ label: 'Pittsburgh', center: null, radiusMeters: null }], destinationVersion: 'osm-node-1704796692-v1', scenarioMaxWalkSeconds: 1200, queriedBedrooms: [criteria?.bedrooms ?? 2], queriedMinBathrooms: criteria?.minBathrooms ?? 2, queriedMaxWholeRent: 240000, queriedPropertyTypes: ['house', 'apartment'], checkedAt: new Date().toISOString(), queryCount: selected.length, limitReasons: ['public pages only', 'source terms/access limits', 'bounded page size/time'] }];
+  const researchScopes: ResearchScope[] = [{ marketKey: `${criteria.market.label.toLowerCase().split('/')[0].trim()}|${criteria.market.region.toLowerCase()}|${criteria.market.country}`, areas: [{ label: criteria.market.label, center: null, radiusMeters: null }], destinationVersion: criteria.destination.version, scenarioMaxWalkSeconds: criteria.maxWalkSeconds, queriedBedrooms: null, queriedMinBathrooms: null, queriedMaxWholeRent: null, queriedPropertyTypes: null, checkedAt: new Date().toISOString(), queryCount: selected.length, limitReasons: ['public pages were fetched without source-side criteria filters', 'source terms/access limits', 'bounded page size/time'] }];
   const sources: SourceEntry[] = SOURCE_REGISTRY.map(({ adapter: _adapter, ...source }) => source);
   const scopedRuns: SourceRun[] = sourceRuns.map((run) => ({ ...run, scope: researchScopes[0] }));
   const collectedAt = new Date().toISOString();

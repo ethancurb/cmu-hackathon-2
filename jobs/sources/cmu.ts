@@ -2,7 +2,7 @@ import { load } from 'cheerio';
 import type { Capture, ObservedListing, ParseResult } from './types.js';
 import { clean, dateValue, elementText, evidenceFor, moneyCents, sourced, unknown } from './extract.js';
 
-const utilityNames: Array<[RegExp, string]> = [[/heat/i, 'gas'], [/water sewer/i, 'water_sewer'], [/water/i, 'water_sewer'], [/trash/i, 'trash'], [/internet/i, 'internet'], [/cable/i, 'other'], [/snow removal/i, 'other'], [/laundry/i, 'other']];
+const utilityNames: Array<[RegExp, string]> = [[/electric/i, 'electricity'], [/heat|gas/i, 'gas'], [/water sewer|sewer|water/i, 'water_sewer'], [/trash/i, 'trash'], [/internet/i, 'internet'], [/cable/i, 'other'], [/snow removal/i, 'other'], [/laundry/i, 'other']];
 
 function firstMatch(text: string, re: RegExp): string | null { const m = text.match(re); return m?.[1] ?? null; }
 
@@ -36,7 +36,7 @@ export function parseCmu(capture: Capture): ParseResult {
     // equal to the card scope because the page does not expose a unit-level row.
     const offerKey = scopeKey; const amount = amounts[0] ?? null; const upper = amounts.length > 1 ? amounts[amounts.length - 1] : amount;
     listings.push({
-      id: `cmu-${card.attr('data-property-id') || index + 1}`, sourceId: capture.sourceId, sourceFamily: 'university-marketplace', url: capture.url,
+      id: `cmu-${card.attr('data-property-id') || index + 1}`, sourceId: capture.sourceId, sourceFamily: 'cmu-offcampus', url: capture.url,
       scope: 'building', buildingKey: scopeKey, offerKey, floorPlanKey: null, scopeKey,
       title: sourced(name, [nameEv.id]), address: sourced(address, [nameEv.id]), unitLabel: unknown(), propertyType: sourced('apartment', [nameEv.id]),
       bedrooms: topBeds ? sourced(Number(topBeds), [nameEv.id]) : unknown(), bathrooms: unknown(), fullBaths: unknown(), halfBaths: unknown(),
@@ -45,6 +45,79 @@ export function parseCmu(capture: Capture): ParseResult {
       utilities, amenities: [], evidence,
     });
   });
+  const embedded = parseCmuListingData(capture);
+  if (embedded.listings.length) listings.push(...embedded.listings);
+  warnings.push(...embedded.warnings);
   if (!listings.length) warnings.push('CMU parser found no c-list cards');
   return { listings, captures: [capture], warnings };
+}
+
+type CmuFloorplan = { id?: number | string; title?: string; bed?: string | number; bath?: string | number; min_rent?: string | number; max_rent?: string | number | null; available_date?: string | null; status?: string };
+type CmuProperty = { title?: string; address?: string; lat?: number | string; lng?: number | string; floorplans?: CmuFloorplan[]; features?: Record<string, string[]>; utilities?: Record<string, string> | string[]; images?: string[]; rent_style?: string; per_person_property?: boolean; special_text?: string };
+
+const CMU_DESTINATION = { lat: 40.4440338, lon: -79.9445593 };
+const CMU_PHOTO_PREFIX = 'https://rcp-prod-uploads.s3.amazonaws.com/property_images/';
+
+function distanceKm(lat: number, lon: number): number {
+  const radians = Math.PI / 180; const dLat = (lat - CMU_DESTINATION.lat) * radians; const dLon = (lon - CMU_DESTINATION.lon) * radians;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(CMU_DESTINATION.lat * radians) * Math.cos(lat * radians) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(a));
+}
+
+function embeddedData(html: string): Record<string, CmuProperty> | null {
+  const marker = 'var listingData = JSON.parse(JSON.stringify('; const markerStart = html.indexOf(marker); if (markerStart < 0) return null;
+  const start = html.indexOf('{', markerStart); const end = html.indexOf('\n        const hiddenPriceLabelText', start); if (start < 0 || end < 0) return null;
+  const json = html.slice(start, end).trim();
+  try { return JSON.parse(json.endsWith('))') ? json.slice(0, -2) : json) as Record<string, CmuProperty>; } catch { return null; }
+}
+
+function valuesFor(property: CmuProperty, group: string): string[] {
+  const featureValues = property.features?.[group] ?? [];
+  const utilityValues = group === 'Utilities' && property.utilities ? Object.values(property.utilities) : [];
+  return [...featureValues, ...utilityValues].map(clean).filter(Boolean).filter((value, index, all) => all.indexOf(value) === index);
+}
+
+function parseCmuListingData(capture: Capture): ParseResult {
+  const data = embeddedData(capture.html); if (!data) return { listings: [], captures: [], warnings: ['CMU embedded listingData was absent or invalid'] };
+  const candidates: Array<{ propertyId: string; property: CmuProperty; floorplan: CmuFloorplan; distance: number; bath: number; rent: number }> = [];
+  for (const [propertyId, property] of Object.entries(data)) {
+    const lat = Number(property.lat); const lon = Number(property.lng); if (!Number.isFinite(lat) || !Number.isFinite(lon) || distanceKm(lat, lon) > 5) continue;
+    for (const floorplan of property.floorplans ?? []) {
+      const bed = Number(floorplan.bed); const bath = Number(floorplan.bath); const rent = Number(floorplan.min_rent); if (String(floorplan.status).toLowerCase() !== 'active' || bed !== 2 || !Number.isFinite(bath) || !Number.isFinite(rent) || rent <= 0 || floorplan.id == null) continue;
+      candidates.push({ propertyId, property, floorplan, distance: distanceKm(lat, lon), bath, rent });
+    }
+  }
+  candidates.sort((a, b) => b.bath - a.bath || a.distance - b.distance || a.rent - b.rent);
+  const selected: typeof candidates = []; const perProperty = new Map<string, number>();
+  for (const candidate of candidates) { const count = perProperty.get(candidate.propertyId) ?? 0; if (count >= 2) continue; selected.push(candidate); perProperty.set(candidate.propertyId, count + 1); if (selected.length >= 16) break; }
+  const listings: ObservedListing[] = [];
+  for (const { propertyId, property, floorplan, bath, rent } of selected) {
+    const buildingKey = `cmu-property-${propertyId}`; const offerKey = `cmu-floorplan-${floorplan.id}`; const propertyTitle = clean(property.title ?? 'CMU Off-Campus listing'); const propertyAddress = clean(property.address ?? ''); const planTitle = clean(floorplan.title ?? '2 Bedroom floorplan');
+    const rowExcerpt = `${propertyTitle}; ${propertyAddress}; ${planTitle}; 2 Beds; ${bath} Baths; $${rent.toFixed(2)}${Number(floorplan.max_rent) > rent ? `-$${Number(floorplan.max_rent).toFixed(2)}` : ''}${floorplan.available_date ? `; Available ${floorplan.available_date}` : ''}`;
+    const buildingEvidence = evidenceFor(capture, buildingKey, 'building', `${propertyTitle}; ${propertyAddress}`, `listingData[${propertyId}]`, true);
+    const offerEvidence = evidenceFor(capture, offerKey, 'floor_plan', rowExcerpt, `listingData[${propertyId}].floorplans[id=${floorplan.id}]`);
+    const evidence: ObservedListing['evidence'] = [buildingEvidence, offerEvidence];
+    const utilityRows: ObservedListing['utilities'] = [];
+    for (const label of valuesFor(property, 'Utilities')) {
+      const pair = utilityNames.find(([regexp]) => regexp.test(label)); const name = pair?.[1] ?? 'other'; if (utilityRows.some((utility) => utility.name === name)) continue;
+      const utilityEvidence = evidenceFor(capture, buildingKey, 'building', `${propertyTitle}; ${propertyAddress}; Utility: ${label}`, `listingData[${propertyId}].features.Utilities`, true); evidence.push(utilityEvidence);
+      utilityRows.push({ name, inclusion: /included/i.test(label) ? 'included' : null, evidenceIds: [utilityEvidence.id], terms: label });
+    }
+    const amenities: ObservedListing['amenities'] = [];
+    for (const label of [...valuesFor(property, 'Unit Features'), ...valuesFor(property, 'Property Features')].slice(0, 30)) {
+      const amenityEvidence = evidenceFor(capture, buildingKey, 'building', `${propertyTitle}; ${propertyAddress}; Amenity: ${label}`, `listingData[${propertyId}].features`, true); evidence.push(amenityEvidence); amenities.push({ label, value: true, evidenceIds: [amenityEvidence.id] });
+    }
+    const leaseValues = valuesFor(property, 'Lease Length'); let leaseTerms = undefined;
+    if (leaseValues.length) { const leaseEvidence = evidenceFor(capture, offerKey, 'offer', `${rowExcerpt}; Lease length: ${leaseValues.join(', ')}`, `listingData[${propertyId}].features['Lease Length']`); evidence.push(leaseEvidence); leaseTerms = sourced(leaseValues.join('; '), [leaseEvidence.id]); }
+    let concessions = undefined; const special = clean(property.special_text ?? '');
+    if (special) { const concessionEvidence = evidenceFor(capture, offerKey, 'offer', `${rowExcerpt}; Special: ${special}`, `listingData[${propertyId}].special_text`); evidence.push(concessionEvidence); concessions = sourced(special, [concessionEvidence.id]); }
+    const coordinates = sourced({ lat: Number(property.lat), lon: Number(property.lng) }, [buildingEvidence.id]);
+    let photo: ObservedListing['photo'] = null; const image = property.images?.map(clean).find(Boolean);
+    if (image) { const photoEvidence = evidenceFor(capture, offerKey, 'floor_plan', `${rowExcerpt}; Photo: ${image}`, `listingData[${propertyId}].images`); evidence.push(photoEvidence); photo = { url: new URL(image, CMU_PHOTO_PREFIX).href, evidenceId: photoEvidence.id, alt: `${propertyTitle} property photo` }; }
+    const maxRent = Number(floorplan.max_rent); const hasRange = Number.isFinite(maxRent) && maxRent > rent; const amount = Math.round(rent * 100); const upperAmount = hasRange ? Math.round(maxRent * 100) : null;
+    listings.push({ id: `cmu-floorplan-${floorplan.id}`, sourceId: capture.sourceId, sourceFamily: 'cmu-offcampus', url: capture.url, scope: 'floor_plan', buildingKey, offerKey, floorPlanKey: offerKey, scopeKey: offerKey,
+      title: sourced(`${propertyTitle} · ${planTitle}`, [buildingEvidence.id, offerEvidence.id]), address: sourced(propertyAddress, [buildingEvidence.id]), unitLabel: unknown(), propertyType: sourced('apartment', [buildingEvidence.id]), bedrooms: sourced(2, [offerEvidence.id]), bathrooms: sourced(bath, [offerEvidence.id]), fullBaths: unknown(), halfBaths: unknown(),
+      rent: { basis: property.rent_style === 'person' || property.per_person_property ? 'per_person' : 'whole_unit', period: 'month', amount: sourced(amount, [offerEvidence.id]), upperAmount: hasRange ? sourced(upperAmount!, [offerEvidence.id]) : unknown(), kind: hasRange ? 'range' : 'exact', semantics: 'base_rent' }, availability: floorplan.available_date ? sourced(dateValue(floorplan.available_date) ?? floorplan.available_date, [offerEvidence.id]) : unknown(), utilities: utilityRows, amenities, evidence, coordinate: coordinates, concessions, leaseTerms, photo });
+  }
+  return { listings, captures: [], warnings: [`CMU embedded data: retained ${listings.length} nearby active 2-bedroom floorplans from ${Object.keys(data).length} properties`] };
 }

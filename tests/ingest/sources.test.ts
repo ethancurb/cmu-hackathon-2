@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { parseReinhold } from '../../jobs/sources/manager-page.js';
 import { parseLobosDetail } from '../../jobs/sources/lobos.js';
+import { parseCmu } from '../../jobs/sources/cmu.js';
 import { validateExtractedFact } from '../../jobs/sources/extract.js';
 import { fetchPublicPage } from '../../jobs/sources/public-page.js';
 
@@ -34,5 +35,19 @@ describe('source parsing', () => {
     expect(result.listings[0].address.value).toBe('6201 FIFTH AVENUE, PITTSBURGH, PA 15232');
     expect(result.listings[0].rent.amount.value).toBe(169900);
     expect(result.listings[0].utilities).toHaveLength(0);
+  });
+
+  it('parses CMU embedded floorplan rows without inventing utility inclusion', () => {
+    const data = { '123': { title: 'Oakland Example', address: '123 Example Ave, Pittsburgh, PA 15213', lat: 40.444, lng: -79.945, rent_style: 'unit', features: { Utilities: ['Water', 'Heat Included'], 'Unit Features': ['Dishwasher'], 'Property Features': ['Elevator'], 'Lease Length': ['12-month'] }, images: ['2026-01/example.jpg'], floorplans: [{ id: 456, title: '2x2 A', bed: '2', bath: '2', min_rent: '1800', max_rent: '1900', available_date: '2026-09-20', status: 'Active' }] } };
+    const html = `<script>var listingData = JSON.parse(JSON.stringify(${JSON.stringify(data)}))\n        const hiddenPriceLabelText`;
+    const result = parseCmu({ url: 'https://offcampus.housing.cmu.edu/listing', fetchedAt: '2026-09-12T09:00:00.000Z', html, captureHash: 'fixture-cmu-json', sourceId: 'cmu-offcampus' });
+    const listing = result.listings.find((item) => item.id === 'cmu-floorplan-456');
+    expect(listing?.bedrooms.value).toBe(2);
+    expect(listing?.bathrooms.value).toBe(2);
+    expect(listing?.rent.amount.value).toBe(180000);
+    expect(listing?.rent.upperAmount.value).toBe(190000);
+    expect(listing?.utilities.find((item) => item.name === 'water_sewer')?.inclusion).toBeNull();
+    expect(listing?.utilities.find((item) => item.name === 'gas')?.inclusion).toBe('included');
+    expect(listing?.photo?.url).toContain('example.jpg');
   });
 });

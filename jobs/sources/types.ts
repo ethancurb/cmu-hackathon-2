@@ -47,6 +47,10 @@ export type ObservedListing = {
   utilities: Array<{ name: string; inclusion: 'included' | 'separate' | 'partial' | null; evidenceIds: string[]; terms: string | null }>;
   amenities: Array<{ label: string; value: boolean | null; evidenceIds: string[] }>;
   evidence: EvidenceRow[];
+  coordinate?: ObservedFact<{ lat: number; lon: number }>;
+  concessions?: ObservedFact<string>;
+  leaseTerms?: ObservedFact<string>;
+  photo?: { url: string; evidenceId: string; alt: string } | null;
 };
 
 export type EvidenceRow = {
