@@ -1,16 +1,17 @@
 import { describe, expect, test, vi } from 'vitest';
-import { findDestinations, manualDestination } from '../../jobs/geo/geocode.js';
+import { findDestinations, geocodeEvidence, manualDestination } from '../../jobs/geo/geocode.js';
 import { SEED_CRITERIA } from '../../src/domain/schema.js';
 
 describe('destination lookup', () => {
   test('only geocodes an explicit submit and caches the result', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify([{ place_id: 42, display_name: '5000 Forbes Ave, Pittsburgh', lat: '40.444', lon: '-79.944' }]), { status: 200 }));
-    const options = { fetch: fetcher, cacheDirectory: `/private/tmp/geo-geocode-${process.pid}-${Date.now()}`, retryDelayMs: 0 };
+    const options = { fetch: fetcher, cacheDirectory: `/private/tmp/geo-geocode-${process.pid}-${Date.now()}`, retryDelayMs: 0, now: () => new Date('2026-09-12T09:00:00.000Z') };
     const first = await findDestinations('5000 Forbes Ave', SEED_CRITERIA.market, new AbortController().signal, options);
     const second = await findDestinations('5000 Forbes Ave', SEED_CRITERIA.market, new AbortController().signal, options);
     expect(first[0]?.coordinate).toEqual({ lat: 40.444, lon: -79.944 });
     expect(second).toEqual(first);
     expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(geocodeEvidence(first[0]!)).toMatchObject({ evidence: { observedAt: '2026-09-12T09:00:00.000Z', excerpt: '5000 Forbes Ave, Pittsburgh' } });
   });
 
   test('creates a valid manual-coordinate destination without pretending it was geocoded', () => {

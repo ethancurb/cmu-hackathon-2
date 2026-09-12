@@ -54,4 +54,18 @@ describe('routeFoot', () => {
     const route = await routeFoot(origin, SEED_CRITERIA.destination, new AbortController().signal, { fetch: fetcher, cacheDirectory: cacheDirectory(), retryDelayMs: 0, timeoutMs: 1 });
     expect(route).toMatchObject({ status: 'unavailable', errorCode: 'NETWORK_ERROR' });
   });
+
+  test('does not treat an empty steps array as verified foot travel', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(response({ routes: [{ ...response().routes[0], legs: [{ steps: [] }] }] })), { status: 200 }));
+    const route = await routeFoot(origin, SEED_CRITERIA.destination, new AbortController().signal, { fetch: fetcher, cacheDirectory: cacheDirectory() });
+    expect(route).toMatchObject({ status: 'needs_review', errorCode: 'MISSING_STEP_MODE' });
+  });
+
+  test('does not reuse a cached route when a destination coordinate changes under the same version', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(response()), { status: 200 }));
+    const directory = cacheDirectory();
+    await routeFoot(origin, SEED_CRITERIA.destination, new AbortController().signal, { fetch: fetcher, cacheDirectory: directory });
+    await routeFoot(origin, { ...SEED_CRITERIA.destination, coordinate: { lat: 40.4441, lon: -79.9445 } }, new AbortController().signal, { fetch: fetcher, cacheDirectory: directory });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { enrichRoutes, enrichSnapshot } from '../../jobs/geo/enrich.js';
+import { enrichRoutes, enrichSnapshot, supportsPrt } from '../../jobs/geo/enrich.js';
 import { SEED_CRITERIA } from '../../src/domain/schema.js';
 import { home2400, matchingRoute, syntheticSnapshot } from '../fixtures/homes.js';
 
@@ -24,5 +24,15 @@ describe('enrichRoutes', () => {
     const controller = new AbortController();
     controller.abort(new DOMException('Stopped', 'AbortError'));
     await expect(enrichSnapshot(syntheticSnapshot([], []), SEED_CRITERIA, controller.signal, undefined, { loadGtfs: async () => { throw controller.signal.reason; } })).rejects.toThrow('Stopped');
+  });
+
+  test('does not attach Pittsburgh-only transit context to an out-of-market destination', async () => {
+    const criteria = { ...SEED_CRITERIA, market: { label: 'Chicago', region: 'IL', country: 'US' as const }, destination: { ...SEED_CRITERIA.destination, coordinate: { lat: 41.878, lon: -87.63 } } };
+    const loadGtfs = vi.fn(); const messages: string[] = [];
+    const result = await enrichSnapshot(syntheticSnapshot([], []), criteria, new AbortController().signal, (message) => messages.push(message), { loadGtfs, queryOsm: async () => [] });
+    expect(supportsPrt(criteria)).toBe(false);
+    expect(loadGtfs).not.toHaveBeenCalled();
+    expect(result.homes).toEqual([]);
+    expect(messages.join(' ')).toContain('unsupported outside Pittsburgh');
   });
 });

@@ -15,7 +15,9 @@ invented transit, essential, coordinate, or route facts.
 explicit submit, limits requests to one per second, and caches the response.
 The latter is the map-pin fallback and is marked as such. `geocodeEvidence()`
 returns the accompanying Nominatim `SourceEntry` and `Evidence` for a caller
-that saves the new destination in a snapshot.
+that saves the new destination in a snapshot. Cache records preserve the
+original full returned address and observation timestamp; evidence never
+invents a later refresh time.
 
 The seed destination remains the canonical mapped Gates Hillman entrance at
 `40.4440338, -79.9445593`; route inputs use the supplied versioned destination.
@@ -32,20 +34,28 @@ and cannot qualify a home.
 
 Routes are serialized at no more than one request per second, have one
 transient retry, and cache full provider responses under `data/cache/geo` by
-origin, destination version, and foot profile. The source entry identifies the
-community service and its no-SLA limitation.
+origin, destination coordinate, destination version, and foot profile. Cached
+records are checked against those inputs before reuse, and an empty/non-walking
+step result is review-required. The source entry identifies the community
+service and its no-SLA limitation.
 
 The PRT adapter reads the official static GTFS ZIP, honors calendar and
 calendar-date additions/removals, accepts GTFS times through `47:59:59`, and
 only sets `servesDestination` after an origin stop occurs before a campus-side
-stop in the same valid scheduled trip. It labels nearest-stop distance as
-straight line and the service window as scheduled, rather than a live arrival.
+stop in the same valid scheduled trip. It selects the next representative
+weekday and includes that exact service date in the scheduled 07:00–10:00
+window; it is not a live arrival. It considers up to eight boarding stops
+within 500 m and campus-side stops within 400 m, ranks direct service first,
+and returns at most five unique contexts. PRT is not applied outside its
+Pittsburgh service area.
 The composer keeps a compact stop/trip subset for the destination and placed
 homes in `data/cache/geo/prt/subsets`.
 
 OSM essentials are queried once around the active destination/research area and
-are limited to grocery/convenience, pharmacy, cafe, and restaurant categories.
-Each home receives a small nearest list with straight-line distance, no
+are limited to a 1,500 m grocery/convenience, pharmacy, cafe, and restaurant
+search. The bounded 400-result response is timestamped and cached for repeated
+or offline refreshes. Each home receives a small diverse nearest list (grocery,
+pharmacy, and cafe/restaurant where available) with straight-line distance, no
 invented walk time, OSM object URL, and dataset evidence. The OpenStreetMap and
 PRT source entries/evidence are appended together so every transit/nearby
 evidence ID resolves under the strict snapshot contract.
@@ -61,7 +71,7 @@ Attribution and limitations are stored with the source entries:
 Ran from the `build/geo` worktree:
 
 ```text
-npm test -- tests/geo       # 5 files, 13 tests passed
+npm test -- tests/geo       # 5 files, 19 tests passed
 npm run typecheck           # passed
 ```
 

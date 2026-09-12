@@ -53,15 +53,43 @@ export function serviceRunsOn(serviceId: string, serviceDate: string, feed: Gtfs
   return feed.calendar.some((entry) => entry.service_id === serviceId && entry[field] === '1' && entry.start_date <= date && entry.end_date >= date);
 }
 
+export function nextRepresentativeWeekday(serviceDate: string): string {
+  const value = new Date(`${serviceDate}T12:00:00Z`);
+  while (value.getUTCDay() === 0 || value.getUTCDay() === 6) value.setUTCDate(value.getUTCDate() + 1);
+  return value.toISOString().slice(0, 10);
+}
+
 const stopCoordinate = (stop: Row): Coordinates | null => {
   const lat = Number(stop.stop_lat); const lon = Number(stop.stop_lon);
   return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
 };
-const nearestStops = (coordinate: Coordinates, feed: GtfsFeed, limit = 1) => feed.stops
+const nearbyStops = (coordinate: Coordinates, feed: GtfsFeed, reachMeters: number, limit = 8) => feed.stops
   .map((stop) => ({ stop, coordinate: stopCoordinate(stop) }))
   .filter((entry): entry is { stop: Row; coordinate: Coordinates } => entry.coordinate !== null)
   .map((entry) => ({ ...entry, distanceMeters: metresBetween(coordinate, entry.coordinate) }))
-  .sort((a, b) => a.distanceMeters - b.distanceMeters).slice(0, limit);
+  .filter((entry) => entry.distanceMeters <= reachMeters).sort((a, b) => a.distanceMeters - b.distanceMeters).slice(0, limit);
+
+type GtfsIndex = { routeById: Map<string, Row>; timesByTrip: Map<string, Row[]>; tripsByStop: Map<string, Row[]> };
+const indexes = new WeakMap<GtfsFeed, GtfsIndex>();
+const indexFeed = (feed: GtfsFeed): GtfsIndex => {
+  const existing = indexes.get(feed);
+  if (existing) return existing;
+  const timesByTrip = new Map<string, Row[]>();
+  const tripsByStop = new Map<string, Row[]>();
+  for (const time of feed.stopTimes) {
+    const times = timesByTrip.get(time.trip_id) ?? [];
+    times.push(time); timesByTrip.set(time.trip_id, times);
+  }
+  for (const times of timesByTrip.values()) times.sort((a, b) => Number(a.stop_sequence) - Number(b.stop_sequence));
+  for (const trip of feed.trips) for (const time of timesByTrip.get(trip.trip_id) ?? []) {
+    const trips = tripsByStop.get(time.stop_id) ?? [];
+    if (!trips.some((candidate) => candidate.trip_id === trip.trip_id)) trips.push(trip);
+    tripsByStop.set(time.stop_id, trips);
+  }
+  const index = { routeById: new Map(feed.routes.map((route) => [route.route_id, route])), timesByTrip, tripsByStop };
+  indexes.set(feed, index);
+  return index;
+};
 
 export function compactGtfsForPoints(feed: GtfsFeed, points: Coordinates[], radiusMeters = 1_000): GtfsFeed {
   const keptStopIds = new Set(feed.stops.filter((stop) => {
@@ -89,29 +117,29 @@ export async function cacheCompactGtfs(feed: GtfsFeed, points: Coordinates[], di
 }
 
 export function findTransitContexts(origin: Coordinates, destination: Coordinates, feed: GtfsFeed, serviceDate: string, evidenceId = `evidence:prt:${feed.version}`): TransitContext[] {
-  const origins = nearestStops(origin, feed); const destinations = nearestStops(destination, feed);
-  const routeById = new Map(feed.routes.map((route) => [route.route_id, route]));
-  const timesByTrip = new Map<string, Row[]>();
-  for (const time of feed.stopTimes) timesByTrip.set(time.trip_id, [...(timesByTrip.get(time.trip_id) ?? []), time].sort((a, b) => Number(a.stop_sequence) - Number(b.stop_sequence)));
+  const origins = nearbyStops(origin, feed, 500); const destinations = nearbyStops(destination, feed, 400);
+  const index = indexFeed(feed);
+  const window = `scheduled service (${serviceDate}, 07:00–10:00)`;
   const output: TransitContext[] = [];
   for (const originStop of origins) {
-    const tripMatches = feed.trips.filter((trip) => serviceRunsOn(trip.service_id, serviceDate, feed) && (timesByTrip.get(trip.trip_id) ?? []).some((time) => time.stop_id === originStop.stop.stop_id));
+    const tripMatches = (index.tripsByStop.get(originStop.stop.stop_id) ?? []).filter((trip) => serviceRunsOn(trip.service_id, serviceDate, feed));
     for (const trip of tripMatches) {
-      const times = timesByTrip.get(trip.trip_id) ?? [];
+      const times = index.timesByTrip.get(trip.trip_id) ?? [];
       const departure = times.find((time) => time.stop_id === originStop.stop.stop_id);
       const departureSeconds = departure ? gtfsTimeToSeconds(departure.departure_time) : null;
       if (departureSeconds === null || departureSeconds < 7 * 3600 || departureSeconds > 10 * 3600) continue;
-      const route = routeById.get(trip.route_id);
+      const route = index.routeById.get(trip.route_id);
       const destinationStop = destinations.find((candidate) => {
         const from = times.find((time) => time.stop_id === originStop.stop.stop_id);
         const to = times.find((time) => time.stop_id === candidate.stop.stop_id);
         return !!from && !!to && Number(to.stop_sequence) > Number(from.stop_sequence);
       });
-      output.push({ originStopId: originStop.stop.stop_id, originStopName: originStop.stop.stop_name || originStop.stop.stop_id, distanceMeters: originStop.distanceMeters, distanceBasis: 'straight_line', routeShortName: route?.route_short_name || route?.route_long_name || trip.route_id, headsign: trip.trip_headsign || departure?.stop_headsign || 'Scheduled route', destinationStopId: destinationStop?.stop.stop_id ?? null, servesDestination: Boolean(destinationStop), serviceDate, window: 'weekday morning scheduled service (07:00–10:00)', feedVersion: feed.version, evidenceIds: [evidenceId] });
+      output.push({ originStopId: originStop.stop.stop_id, originStopName: originStop.stop.stop_name || originStop.stop.stop_id, distanceMeters: originStop.distanceMeters, distanceBasis: 'straight_line', routeShortName: route?.route_short_name || route?.route_long_name || trip.route_id, headsign: trip.trip_headsign || departure?.stop_headsign || 'Scheduled route', destinationStopId: destinationStop?.stop.stop_id ?? null, servesDestination: Boolean(destinationStop), serviceDate, window, feedVersion: feed.version, evidenceIds: [evidenceId] });
     }
   }
   const seen = new Set<string>();
-  return output.filter((context) => { const key = `${context.originStopId}|${context.routeShortName}|${context.headsign}|${context.destinationStopId}`; if (seen.has(key)) return false; seen.add(key); return true; });
+  return output.sort((a, b) => Number(b.servesDestination) - Number(a.servesDestination) || a.distanceMeters - b.distanceMeters)
+    .filter((context) => { const key = `${context.routeShortName}|${context.headsign}|${context.destinationStopId ?? 'nearby'}`; if (seen.has(key)) return false; seen.add(key); return true; }).slice(0, 5);
 }
 
 export const PRT_ATTRIBUTION = 'PRT schedule data reproduced with permission from Pittsburgh Regional Transit; schedule data may be unavailable or inaccurate. Check current service before travel.';

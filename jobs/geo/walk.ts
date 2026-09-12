@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Coordinates, Destination, WalkRoute } from '../../src/domain/schema.js';
+import { WalkRouteSchema, type Coordinates, type Destination, type WalkRoute } from '../../src/domain/schema.js';
 import { isCoordinates, metresBetween } from './coordinates.js';
 
 const PROVIDER = 'https://routing.openstreetmap.de/routed-foot';
@@ -23,7 +23,7 @@ export type FootRouteOptions = {
   now?: () => Date;
 };
 
-const routeId = (origin: Coordinates, destination: Destination) => `route:foot:${createHash('sha256').update(`${origin.lat},${origin.lon}|${destination.id}|${destination.version}`).digest('hex').slice(0, 20)}`;
+const routeId = (origin: Coordinates, destination: Destination) => `route:foot:${createHash('sha256').update(`${origin.lat},${origin.lon}|${destination.id}|${destination.version}|${destination.coordinate.lat},${destination.coordinate.lon}`).digest('hex').slice(0, 20)}`;
 const cachePath = (origin: Coordinates, destination: Destination, directory: string) => join(directory, `${routeId(origin, destination).replaceAll(':', '-')}.json`);
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve, reject) => {
   if (signal.aborted) { reject(signal.reason ?? new DOMException('Aborted', 'AbortError')); return; }
@@ -48,6 +48,15 @@ const validLine = (value: unknown): [number, number][] | null => {
   const coordinates = value.map((point) => asCoordinate(point));
   return coordinates.every((point) => point !== null) ? coordinates.map((point) => [point!.lon, point!.lat]) : null;
 };
+const sameCoordinate = (a: Coordinates, b: Coordinates) => a.lat === b.lat && a.lon === b.lon;
+const validCachedRoute = (cached: { route?: unknown; raw?: OsrmResponse }, origin: Coordinates, destination: Destination): cached is { route: WalkRoute; raw: OsrmResponse } => {
+  const parsed = WalkRouteSchema.safeParse(cached.route);
+  if (!parsed.success) return false;
+  const candidate = parsed.data;
+  const steps = cached.raw?.routes?.[0]?.legs?.flatMap((leg) => leg.steps ?? []) ?? [];
+  const verifiedFootSteps = steps.length > 0 && steps.every((step) => step.mode === 'walking');
+  return candidate.id === routeId(origin, destination) && sameCoordinate(candidate.origin, origin) && candidate.destinationId === destination.id && candidate.destinationVersion === destination.version && sameCoordinate(candidate.requestedDestination, destination.coordinate) && candidate.profile === 'foot' && (candidate.status !== 'ok' || verifiedFootSteps);
+};
 
 async function respectRateLimit(signal: AbortSignal): Promise<void> {
   const delay = Math.max(0, 1_000 - (Date.now() - lastRequestAt));
@@ -61,8 +70,8 @@ export async function routeFoot(origin: Coordinates, destination: Destination, s
   const directory = options.cacheDirectory ?? CACHE_ROOT;
   const path = cachePath(origin, destination, directory);
   try {
-    const cached = JSON.parse(await readFile(path, 'utf8')) as { route?: WalkRoute };
-    if (cached.route) return cached.route;
+    const cached = JSON.parse(await readFile(path, 'utf8')) as { route?: unknown; raw?: OsrmResponse };
+    if (validCachedRoute(cached, origin, destination)) return cached.route;
   } catch { /* cache miss */ }
 
   const coordinates = `${origin.lon},${origin.lat};${destination.coordinate.lon},${destination.coordinate.lat}`;
@@ -99,14 +108,15 @@ export async function routeFoot(origin: Coordinates, destination: Destination, s
     return unavailable(origin, destination, 'INVALID_RESPONSE', now);
   }
   const steps = first?.legs?.flatMap((leg) => leg.steps ?? []) ?? [];
+  const missingStepMode = steps.length === 0;
   const unexpectedMode = steps.some((step) => step.mode !== 'walking');
   const snapTooFar = metresBetween(origin, snappedOrigin) > 75 || metresBetween(destination.coordinate, snappedDestination) > 75;
   const route: WalkRoute = {
     id: routeId(origin, destination), origin, destinationId: destination.id, destinationVersion: destination.version,
     requestedDestination: destination.coordinate, snappedOrigin, snappedDestination,
-    status: unexpectedMode || snapTooFar ? 'needs_review' : 'ok', durationSeconds, distanceMeters,
+    status: missingStepMode || unexpectedMode || snapTooFar ? 'needs_review' : 'ok', durationSeconds, distanceMeters,
     geometry: { type: 'LineString', coordinates: geometry }, provider: PROVIDER, profile: 'foot', computedAt: now().toISOString(),
-    errorCode: unexpectedMode ? 'UNEXPECTED_STEP_MODE' : snapTooFar ? 'SNAP_TOO_FAR' : null,
+    errorCode: missingStepMode ? 'MISSING_STEP_MODE' : unexpectedMode ? 'UNEXPECTED_STEP_MODE' : snapTooFar ? 'SNAP_TOO_FAR' : null,
   };
   try {
     await mkdir(directory, { recursive: true });

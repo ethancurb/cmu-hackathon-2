@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { compactGtfsForPoints, findTransitContexts, gtfsTimeToSeconds, serviceRunsOn, type GtfsFeed } from '../../jobs/geo/transit.js';
+import { compactGtfsForPoints, findTransitContexts, gtfsTimeToSeconds, nextRepresentativeWeekday, serviceRunsOn, type GtfsFeed } from '../../jobs/geo/transit.js';
 
 const feed: GtfsFeed = {
   version: 'test-feed',
@@ -21,7 +21,7 @@ describe('PRT GTFS context', () => {
   test('requires same-trip forward stop order before promising destination service', () => {
     const forward = findTransitContexts({ lat: 40.4401, lon: -79.9501 }, { lat: 40.4440, lon: -79.9445 }, feed, '2026-09-14');
     expect(forward).toHaveLength(1);
-    expect(forward[0]).toMatchObject({ routeShortName: '61A', headsign: 'Carnegie Mellon', destinationStopId: 'campus', servesDestination: true });
+    expect(forward[0]).toMatchObject({ routeShortName: '61A', headsign: 'Carnegie Mellon', destinationStopId: 'campus', servesDestination: true, window: 'scheduled service (2026-09-14, 07:00–10:00)' });
 
     const reverse = findTransitContexts({ lat: 40.4444, lon: -79.9423 }, { lat: 40.4400, lon: -79.9500 }, feed, '2026-09-14');
     expect(reverse).toHaveLength(1);
@@ -42,5 +42,19 @@ describe('PRT GTFS context', () => {
     const compact = compactGtfsForPoints(expanded, [{ lat: 40.4401, lon: -79.9501 }, { lat: 40.4440, lon: -79.9445 }]);
     expect(compact.stops.map((stop) => stop.stop_id)).not.toContain('far');
     expect(compact.trips.map((trip) => trip.trip_id)).toEqual(['toward-campus']);
+  });
+
+  test('uses a representative next weekday for a Saturday refresh and ranks direct service before nearby non-direct routes', () => {
+    expect(nextRepresentativeWeekday('2026-09-12')).toBe('2026-09-14');
+    const richer: GtfsFeed = {
+      ...feed,
+      stops: [...feed.stops, { stop_id: 'closer-nondirect', stop_name: 'Closer non-direct', stop_lat: '40.44015', stop_lon: '-79.9501' }, { stop_id: 'extra-campus', stop_name: 'Extra campus', stop_lat: '40.4441', stop_lon: '-79.9444' }],
+      routes: [...feed.routes, { route_id: '99', route_short_name: '99' }],
+      trips: [...feed.trips, { route_id: '99', service_id: 'weekday', trip_id: 'nondirect', trip_headsign: 'Elsewhere' }],
+      stopTimes: [...feed.stopTimes, { trip_id: 'nondirect', arrival_time: '08:02:00', departure_time: '08:02:00', stop_id: 'closer-nondirect', stop_sequence: '1' }, { trip_id: 'nondirect', arrival_time: '08:06:00', departure_time: '08:06:00', stop_id: 'extra-campus', stop_sequence: '0' }],
+    };
+    const contexts = findTransitContexts({ lat: 40.4401, lon: -79.9501 }, { lat: 40.4440, lon: -79.9445 }, richer, '2026-09-14');
+    expect(contexts.map((context) => context.routeShortName)).toEqual(['61A', '99']);
+    expect(contexts.map((context) => context.servesDestination)).toEqual([true, false]);
   });
 });
