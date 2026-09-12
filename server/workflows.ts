@@ -31,6 +31,36 @@ export function carryForward(previous: Snapshot, fresh: Snapshot): Snapshot {
   return { ...fresh, homes: reconcileHomes(previous.homes.filter(home => !incoming.has(home.id)).map(home => ({ ...home, listingStatus: home.listingStatus === 'reported_off_market' ? 'reported_off_market' : 'stale' })), homes), evidence: uniqueById([...previous.evidence, ...fresh.evidence]), sources: uniqueById([...previous.sources, ...fresh.sources]), routes: previous.routes, researchScopes: [...previous.researchScopes, ...fresh.researchScopes] };
 }
 
+/** A cross-market import starts a new immutable snapshot; only same-market imports can reuse location/context. */
+export function mergeImportedSnapshot(previous: Snapshot, fresh: Snapshot): Snapshot {
+  if (marketKey(previous.discoveryMarket) !== marketKey(fresh.discoveryMarket)) return fresh;
+  const previousById = new Map(previous.homes.map(home => [home.id, home]));
+  const homes = reconcileHomes(previous.homes, fresh.homes).map(home => {
+    const prior = previousById.get(home.id);
+    if (!prior || prior.address.value !== home.address.value) return home;
+    const coordinate = home.coordinate.value === null ? prior.coordinate : home.coordinate;
+    const sameCoordinate = coordinate.value !== null && prior.coordinate.value !== null
+      && coordinate.value.lat === prior.coordinate.value.lat && coordinate.value.lon === prior.coordinate.value.lon;
+    if (!sameCoordinate) return { ...home, coordinate };
+    return {
+      ...home,
+      coordinate,
+      routeIds: home.routeIds.length ? home.routeIds : prior.routeIds,
+      transit: home.transit.length ? home.transit : prior.transit,
+      nearby: home.nearby.length ? home.nearby : prior.nearby,
+    };
+  });
+  return {
+    ...fresh,
+    homes,
+    sources: uniqueById([...previous.sources, ...fresh.sources]),
+    evidence: uniqueById([...previous.evidence, ...fresh.evidence]),
+    routes: uniqueById([...previous.routes, ...fresh.routes]),
+    sourceRuns: [...previous.sourceRuns, ...fresh.sourceRuns],
+    researchScopes: [...previous.researchScopes, ...fresh.researchScopes],
+  };
+}
+
 export function createWorkflows(store: SnapshotStore, options: { useResearchWorker?: boolean; limit?: number } = {}): Workflows {
   const discovery: Workflows['discovery'] = async (criteria, signal, progress) => {
     const previous = await store.loadCurrent();
@@ -128,6 +158,8 @@ export function createWorkflows(store: SnapshotStore, options: { useResearchWork
     const previous = await store.loadCurrent();
     if (context && previous.id !== context.snapshotId) throw new AppError('STALE_SNAPSHOT', 'New research is available. Refresh before importing a listing.', 409);
     const criteria = context?.criteria ?? { ...SEED_CRITERIA, market: previous.discoveryMarket };
+    const sameMarket = marketKey(previous.discoveryMarket) === marketKey(criteria.market);
+    const importSource: SourceEntry = { id: registered.id, family: registered.family, name: registered.name, url: registered.url, accessMode: registered.accessMode, limitation: registered.limitation };
     const checkedAt = new Date().toISOString();
     const scope = { ...researchScope(criteria, checkedAt), queryCount: 1, limitReasons: ['One explicitly imported source page; not a broader market search.'] };
     progress(`Checking the supplied ${registered.name} listing.`);
@@ -138,17 +170,17 @@ export function createWorkflows(store: SnapshotStore, options: { useResearchWork
       if (!parsed?.listings.length) throw new AppError('NO_UNIT_EVIDENCE', 'This page has no supported unit-level structure. Paste its listing text to preserve it as an unverified lead.', 422);
       const evidence = uniqueById(parsed.listings.flatMap(home => home.evidence));
       const homes = parsed.listings.map(home => toHome(home, evidence));
-      fresh = snapshotFromCollection({ homes, evidence, sources: previous.sources, researchScopes: [scope], sourceRuns: [{ sourceId, status: 'imported', method: 'Explicit URL import + bounded public fetch and source-specific parser', startedAt: checkedAt, completedAt: capture.fetchedAt, urlsAttempted: [url], pagesFetched: 1, observations: homes.length, importedHomeIds: homes.map(home => home.id), duplicateObservations: 0, queryDescription: `User-selected page: ${url}`, bounds: 'One registered host; 12 MiB; finite timeout.', scope, error: null }] }, criteria);
+      fresh = snapshotFromCollection({ homes, evidence, sources: uniqueById([...(sameMarket ? previous.sources : []), importSource]), researchScopes: [scope], sourceRuns: [{ sourceId, status: 'imported', method: 'Explicit URL import + bounded public fetch and source-specific parser', startedAt: checkedAt, completedAt: capture.fetchedAt, urlsAttempted: [url], pagesFetched: 1, observations: homes.length, importedHomeIds: homes.map(home => home.id), duplicateObservations: 0, queryDescription: `User-selected page: ${url}`, bounds: 'One registered host; 12 MiB; finite timeout.', scope, error: null }] }, criteria);
     } catch (error) {
       if (signal.aborted) throw error;
       if (!text.trim()) throw error;
       const captureHash = createHash('sha256').update(text).digest('hex');
-      fresh = appendLeads(snapshotFromCollection({ homes: [], evidence: [], sources: previous.sources, researchScopes: [], sourceRuns: [] }, criteria), { queries: [`User supplied listing text from ${url}`], leads: [{ title: text.trim().split('\n')[0]!.slice(0, 180), address: null, url, excerpt: text.trim().slice(0, 800), sourceName: registered.name }], limitations: ['User-imported text; unit facts have not been verified against a supported page parser.'], observedAt: checkedAt, captureHash }, criteria);
+      fresh = appendLeads(snapshotFromCollection({ homes: [], evidence: [], sources: sameMarket ? previous.sources : [], researchScopes: [], sourceRuns: [] }, criteria), { queries: [`User supplied listing text from ${url}`], leads: [{ title: text.trim().split('\n')[0]!.slice(0, 180), address: null, url, excerpt: text.trim().slice(0, 800), sourceName: registered.name }], limitations: ['User-imported text; unit facts have not been verified against a supported page parser.'], observedAt: checkedAt, captureHash }, criteria);
       fresh.evidence = fresh.evidence.map(item => item.channel === 'search_index' ? { ...item, channel: 'user_import', locator: 'Text supplied in the listing import form.' } : item);
       fresh.sourceRuns = fresh.sourceRuns.map(run => ({ ...run, method: 'User-supplied text import; unverified lead', pagesFetched: 0 }));
     }
     // An explicit import adds to the current research; it does not mark every other home stale.
-    let snapshot = { ...fresh, homes: reconcileHomes(previous.homes, fresh.homes), sources: uniqueById([...previous.sources, ...fresh.sources]), evidence: uniqueById([...previous.evidence, ...fresh.evidence]), routes: previous.routes, sourceRuns: [...previous.sourceRuns, ...fresh.sourceRuns], researchScopes: [...previous.researchScopes, ...fresh.researchScopes] };
+    let snapshot = mergeImportedSnapshot(previous, fresh);
     if (context) {
       snapshot = await placeHomes(snapshot, criteria, signal, progress);
       snapshot = await enrichRoutes(snapshot, criteria.destination, signal);

@@ -38,9 +38,12 @@ export async function enrichRoutes(snapshot: Snapshot, destination: Destination,
 export async function enrichSnapshot(snapshot: Snapshot, criteria: Criteria, signal: AbortSignal, onProgress?: Progress, options: SnapshotEnrichmentOptions = {}): Promise<Snapshot> {
   const placed = snapshot.homes.filter((home) => isCoordinates(home.coordinate.value)).length;
   onProgress?.(`Routing ${placed} placed homes to ${criteria.destination.label}.`);
-  let enriched = await enrichRoutes(snapshot, criteria.destination, signal, options);
+  const prtSupported = supportsPrt(criteria);
+  const destinationMatches = (context: Home['transit'][number]) => context.destinationId === criteria.destination.id && context.destinationVersion === criteria.destination.version;
+  const transitForActiveDestination = (home: Home) => prtSupported ? home.transit.filter(destinationMatches) : [];
+  let enriched = await enrichRoutes({ ...snapshot, homes: snapshot.homes.map(home => ({ ...home, transit: transitForActiveDestination(home) })) }, criteria.destination, signal, options);
   const now = options.now ?? (() => new Date());
-  if (!supportsPrt(criteria)) {
+  if (!prtSupported) {
     onProgress?.('PRT transit context unsupported outside Pittsburgh service area.');
   } else try {
     onProgress?.('Loading official PRT schedule context.');
@@ -51,7 +54,7 @@ export async function enrichSnapshot(snapshot: Snapshot, criteria: Criteria, sig
     const evidenceId = `evidence:prt:${hash(feed.version)}`;
     const contextEvidence = evidence(evidenceId, sourceEntry.id, sourceEntry.url, feed.version, PRT_ATTRIBUTION);
     const serviceDate = nextRepresentativeWeekday(currentDateNewYork(now()));
-    enriched = { ...enriched, sources: upsert(enriched.sources, sourceEntry), evidence: upsert(enriched.evidence, contextEvidence), homes: enriched.homes.map((home) => isCoordinates(home.coordinate.value) ? { ...home, transit: findTransitContexts(home.coordinate.value, criteria.destination.coordinate, feed, serviceDate, evidenceId) } : home) };
+    enriched = { ...enriched, sources: upsert(enriched.sources, sourceEntry), evidence: upsert(enriched.evidence, contextEvidence), homes: enriched.homes.map((home) => isCoordinates(home.coordinate.value) ? { ...home, transit: findTransitContexts(home.coordinate.value, criteria.destination.coordinate, feed, serviceDate, evidenceId).map(context => ({ ...context, destinationId: criteria.destination.id, destinationVersion: criteria.destination.version })) } : home) };
   } catch (error) {
     if (signal.aborted) throw error;
     onProgress?.(`Transit context unavailable: ${error instanceof Error ? error.message : 'unknown error'}.`);

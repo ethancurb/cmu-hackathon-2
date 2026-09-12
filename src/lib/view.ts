@@ -32,6 +32,7 @@ export const utilityState = (utility?: Utility) => utility?.inclusion.state === 
 export const utilityFor = (home: Home, key: UtilityName) => home.utilities.find(u => u.name === key);
 export const unresolved = (result: EvaluatedHome) => result.cost.unknownItems.length;
 export const homeRoute = (snapshot: Snapshot, result?: EvaluatedHome) => result?.routeId ? snapshot.routes.find(r => r.id === result.routeId) : undefined;
+export const transitFor = (home: Home, criteria: Criteria) => home.transit.filter(context => context.destinationId === criteria.destination.id && context.destinationVersion === criteria.destination.version);
 export const routeForHome = (snapshot: Snapshot, home: Home, criteria: Criteria): WalkRoute | undefined => snapshot.routes.find(r => home.routeIds.includes(r.id) && r.destinationId === criteria.destination.id && r.destinationVersion === criteria.destination.version);
 export const sourceNames = (snapshot: Snapshot, home: Home) => snapshot.evidence.filter(e => home.sourceListingIds.includes(e.scopeKey) || home.primaryUrl === e.url).map(e => snapshot.sources.find(s => s.id === e.sourceId)?.name).filter((x): x is string => Boolean(x));
 export const fitLabel = (result: EvaluatedHome) => result.fit === 'matches' ? 'Meets stated requirements' : result.fit === 'near_match' ? 'Near match' : 'Needs verification';

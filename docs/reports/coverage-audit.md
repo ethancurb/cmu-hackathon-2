@@ -1,6 +1,6 @@
 # Housing source coverage audit
 
-Checked 2026-09-12 for the Pittsburgh / CMU demonstration. This audit reconciles the 16 entries in `jobs/sources/registry.ts` with the broader public source survey in [`docs/research/housing-sources.md`](../research/housing-sources.md). “Surveyed” means that a public page, search result, or access barrier was actually observed and recorded. It does not mean that the site is an application connector. “Imported” means that the bounded collector fetched and parsed the source into the live seed.
+Checked 2026-09-12 for the Pittsburgh / CMU demonstration. This audit covers all 20 housing entries in `jobs/sources/registry.ts` and reconciles them with the broader public source survey in [`docs/research/housing-sources.md`](../research/housing-sources.md). “Surveyed” means that a public page, search result, or access barrier was actually observed and recorded. It does not mean that the site is an application connector. “Imported” means that the bounded collector fetched and parsed the source into the live seed.
 
 ## Registered sources
 
@@ -23,9 +23,11 @@ Checked 2026-09-12 for the Pittsburgh / CMU demonstration. This audit reconciles
 | [Craigslist Pittsburgh](https://pittsburgh.craigslist.org/apa/) · `craigslist` | **Surveyed, unavailable for app use** | Search-index posts exposed free-text price, beds/baths, lease, utilities, fees and dates; direct/search access was unsafe or stale for some posts and individual posts disappeared. | [Craigslist apartments](https://pittsburgh.craigslist.org/apa/). Historical/index snippets are not current vacancy; no bypass or app import. |
 | [Facebook Marketplace](https://www.facebook.com/marketplace/pittsburgh/propertyrentals/) · `meta-marketplace` | **Surveyed, unavailable** | Public page reached an email/phone/password wall and temporary block state; no listings were observed. | [Facebook Marketplace](https://www.facebook.com/marketplace/pittsburgh/propertyrentals/). No authentication or block bypass. |
 
-## Surveyed major sources kept outside the registry
+## Surveyed registered sources without direct adapters
 
-The source survey also checked four major marketplace surfaces. They remain outside the registry because there is no selected adapter or supported app access path; omitting them from the registry is intentional and does not mean they were forgotten.
+Four registered marketplace surfaces have survey evidence but no selected direct
+adapter or supported app access path. Registry membership records the source
+and its access limitation; it does not claim that the application imported it.
 
 | Source | Survey status on 2026-09-12 | Evidence and limitation |
 | --- | --- | --- |
@@ -36,8 +38,8 @@ The source survey also checked four major marketplace surfaces. They remain outs
 
 ## Coverage interpretation
 
-The checked set contains 20 distinct major/local source surfaces: the 16 registry entries plus the four survey-only sources above. Three organizations are actually imported into the current source seed: CMU Off-Campus Housing, Lobos Management and Reinhold Residential. All other entries are links or documented gaps. Counts and cards across Zillow Group, Apartments.com-family, Rent.com-family, Realtor.com, Zumper and Apartment List must not be summed because the survey found substantial address/building overlap.
+The checked set contains 20 distinct registered major/local source surfaces. Three organizations are actually imported into the current source seed: CMU Off-Campus Housing, Lobos Management and Reinhold Residential. All other entries are links or documented gaps. Counts and cards across Zillow Group, Apartments.com-family, Rent.com-family, Realtor.com, Zumper and Apartment List must not be summed because the survey found substantial address/building overlap.
 
-The current seed therefore proves three independent public organizations and 45 source observations, not exhaustive Pittsburgh coverage. The source ledger and [source-build report](source-build.md) retain retrieval timestamps, raw capture names, source families, observed URLs and unknown fields. Restricted portals remain browsable links; they are not presented as live integrations. The next permitted expansion would require a source-approved feed, connector or written authorization for the restricted portal families, followed by unit-level identity, rent-basis, fee, utility, lease and freshness checks.
+The current seed therefore proves three independent public organizations and 49 parsed source observations, not exhaustive Pittsburgh coverage. The source ledger and [source-build report](source-build.md) retain retrieval timestamps, raw capture names, source families, observed URLs and unknown fields. Restricted portals remain browsable links; they are not presented as live integrations. The next permitted expansion would require a source-approved feed, connector or written authorization for the restricted portal families, followed by unit-level identity, rent-basis, fee, utility, lease and freshness checks.
 
 The user’s durable intent is recorded in [`PROJECT.md`](../../PROJECT.md), [`docs/context/COMMISSION.md`](../context/COMMISSION.md), and [`docs/context/USER-REFINEMENTS.md`](../context/USER-REFINEMENTS.md): carry the burden of searching a fragmented market, preserve all four decision questions, seed a real CMU demonstration, emphasize rent basis/utilities, and proceed autonomously during the overnight build. Those files preserve the commission and substantive refinements; this audit does not claim that any unavailable past response or hidden source access exists.

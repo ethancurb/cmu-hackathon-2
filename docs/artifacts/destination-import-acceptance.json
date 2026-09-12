@@ -1,0 +1,85 @@
+{
+  "checkedAt": "2026-09-12T11:28:17.661Z",
+  "destination": {
+    "id": "destination:4d0444bb55896ec83764",
+    "version": "nominatim:350542631",
+    "label": "Hunt Library, 4909, Frew Street, Squirrel Hill North, Pittsburgh, Allegheny County, Pennsylvania, 15213, United States",
+    "coordinate": {
+      "lat": 40.441111,
+      "lon": -79.94374
+    },
+    "evidenceIds": [
+      "evidence:geocode:27c9c8318da59a3219d4"
+    ],
+    "caveat": "Geocoded only after explicit submit; verify the mapped entrance before relying on route qualification."
+  },
+  "routeJob": {
+    "id": "43597ed7-bc38-4b74-a7ca-0670fb90d863",
+    "type": "routes",
+    "status": "succeeded",
+    "createdAt": "2026-09-12T11:27:47.867Z",
+    "updatedAt": "2026-09-12T11:27:54.661Z",
+    "progress": {
+      "completed": 49,
+      "total": 49,
+      "message": "3 walking routes ready for Hunt Library, 4909, Frew Street, Squirrel Hill North, Pittsburgh, Allegheny County, Pennsylvania, 15213, United States; 0 still unverified."
+    },
+    "snapshotId": "research-20260912112747-6e43d2af",
+    "error": null
+  },
+  "beforeWalking": {
+    "key": "walk",
+    "outcome": "unknown",
+    "required": 1200,
+    "actual": null,
+    "delta": null,
+    "unit": "seconds",
+    "evidenceIds": []
+  },
+  "afterWalking": {
+    "key": "walk",
+    "outcome": "pass",
+    "required": 1200,
+    "actual": 990.8,
+    "delta": -209.20000000000005,
+    "unit": "seconds",
+    "evidenceIds": []
+  },
+  "route": {
+    "id": "route:foot:58782a5358438288f0c7",
+    "requestedDestination": {
+      "lat": 40.441111,
+      "lon": -79.94374
+    },
+    "snappedDestination": {
+      "lat": 40.441278,
+      "lon": -79.94379
+    },
+    "durationSeconds": 990.8,
+    "computedAt": "2026-09-12T11:27:48.555Z"
+  },
+  "newMarket": {
+    "count": 0,
+    "discoveryNeeded": true
+  },
+  "import": {
+    "job": {
+      "id": "bbcda6f8-b175-45e4-8a99-e9be1ca934f1",
+      "type": "discovery",
+      "status": "succeeded",
+      "createdAt": "2026-09-12T11:27:55.051Z",
+      "updatedAt": "2026-09-12T11:28:16.592Z",
+      "progress": {
+        "completed": 49,
+        "total": 49,
+        "message": "1 imported options checked; source uncertainty remains visible."
+      },
+      "snapshotId": "research-20260912112756-f37db221",
+      "error": null
+    },
+    "uniqueUnitCount": 1,
+    "rentCents": 169900,
+    "bathrooms": 1,
+    "sourceUrl": "https://lobosmanagement.com/units/bentley-apartments-021-a-03/"
+  }
+}

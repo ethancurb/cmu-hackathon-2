@@ -5,20 +5,20 @@ User target: approximately 11 a.m. EDT / 15:00 UTC, give or take. The user expli
 
 Authorization: build the full application, perform overnight public-source research, iterate and self-improve, invoke Fable and OpenCode Go at the coordinator's discretion, and proceed autonomously within the project's scope. No intermediate approval is required for routine implementation, testing, source research or these reviews.
 
-Current (06:54 a.m. EDT): real source, geographic, API and frontend modules integrated. A second live refresh published 59 options, including previously observed records marked stale; a fresh portable seed is being rebuilt from the audited adapters. Fable's first actual-screen critique has produced a substantial visual revision. All 80 integrated regressions passed before the latest small source/API improvements. Application acceptance has not been reached.
+Current (07:55 a.m. EDT): the application is implemented and the final local integration is underway. The audited portable CMU snapshot has 49 offers/leads from three direct housing organizations, 30 placed records, 24 usable foot routes, 30 destination-scoped transit contexts and 21 nearby-context records. The production interface has passed five browser acceptance flows and separate live city, routing, import, discovery, and external-network failure checks. The 89-test integrated suite passed; three additional import regressions passed in isolation and will be included in the final main-workspace run. Fable completed two rendered reviews; independent Sol completed the final visual fallback after automatic review rejected the last Fable screenshot export.
 
 ## Task ledger
 
 | Task | State | Evidence / next action |
 | --- | --- | --- |
-| 1 Contract and foundation | Implemented | Shared Zod contracts, canonical criteria, local toolchain |
-| 2 Decision engine | Implemented; reviewed | OpenCode Go GLM-5.3 found six issues; corrections integrated; 30 domain regressions pass. Evidence-aware coordinate fix retained. |
-| 3 Real sources and seed | Expanded and audited | Five-record source audit completed; corrected property photos, lease/concession scope, utility applicability and old availability readiness. Fresh captures from three organizations; all 20 surveyed major/local sources represented in registry. |
-| 4 Geographic enrichment | Implemented; real routes and context | 36 placed records in the second refresh; provider foot routes, ordered-trip PRT schedule evidence and OSM essentials. New seed enriching with cached verified provider responses. |
-| 5 API and jobs | Implemented; integration in progress | Immutable atomic snapshots, bounded processes/jobs, actual public collection, web-lead discovery, imports, routing and destination APIs. API listening 4318. |
-| 6 Frontend core | Rendered and reviewed; iterating | Fable 5.1 reviewed real screenshots; reducing density/header waste, strengthening map and compact utility presentation |
-| 7 Complete decision loop | Implemented; browser validation pending | Comparison, shortlist, criteria, alternatives, source coverage, discovery and route polling; validate against real data next |
-| 8 Reviews and handoff | In progress | Fable visual1, OpenCode domain review, independent source audit and native Terra backend review completed. Second rendered review and full browser/production acceptance remain. |
+| Contract and foundation | Implemented | Canonical criteria, scoped facts, snapshot validation, integer money and destination identity |
+| Decision engine | Implemented and reviewed | OpenCode Go review corrections; deterministic fit, costs, alternatives and reconciliation |
+| Real sources and seed | Captured and audited | CMU Off-Campus, Lobos, Reinhold; 20-source registry and explicit gaps; five-record evidence audit |
+| Geographic context | Implemented and exercised live | Actual foot routes to Gates/Hunt Library, official PRT trip context, sourced nearby essentials |
+| API and jobs | Implemented and exercised live | Bounded discovery, import and routing; immutable atomic snapshots; cancellation and market isolation |
+| Frontend | Iterated and visually reviewed | Fable visual1/2; dedicated Sol frontend lane; final independent local visual review |
+| Decision loop | Browser checks passed | Alternatives, comparison, shortlist, criteria, evidence, map, coverage, city change and network fallback |
+| Main-workspace handoff | In progress | Local integration, reproducible install/build, final tests and persistent production startup remain |
 
 ## Execution decisions
 
@@ -29,10 +29,10 @@ Current (06:54 a.m. EDT): real source, geographic, API and frontend modules inte
 
 ## Recovery pointers
 
-- Primary build: `.worktrees/build`, branch `build/address`. Other isolated lanes: `frontend`, `sources`, `geo`, `domain`.
-- Real API: `node --import tsx server/index.ts`, http://127.0.0.1:4318. Frontend worker preview: http://127.0.0.1:5183. Final startup/runbook not yet complete.
-- First real seed: `research-20260912100326-5f08229f`; immutable `data/snapshots/`, atomic `data/current.json`, portable `data/seed/cmu.json`.
-- OpenCode's domain review and Fable visual1 completed. Automatic review rejected the later backend-source export packet; independent native Terra review completed instead, with no approval pending and no work waiting on the user.
-- The live Fable discovery worker completed in 70 seconds with ten public-source leads. Its restricted environment now preserves USER/LOGNAME so Claude can find the existing authenticated login; unrelated secret environment values are not forwarded. No new login was needed.
-- A real refresh caught Node 26's lookup-all callback mismatch in the DNS-pinned fetcher. The fix passed a dedicated regression and actual CMU fetch, followed by a successful three-source refresh. Failed collection no longer overwrites the portable source file; served snapshots were preserved throughout.
-- Do not count search-index leads, arbitrary assumed facts, or broad building price ranges as confirmed units. Address geocodes are explicitly derived; valid provider foot routes remain computed estimates.
+- Primary implementation: `.worktrees/build`, branch `build/address`; integrating locally into `main`. Keep isolated lanes and public research captures for provenance.
+- Production viewing URL: `http://127.0.0.1:4173`. Obsolete development previews will be stopped.
+- Portable seed: `research-20260912114226-842aacf0`, `data/seed/cmu.json`. Original housing observations remain dated about 07:00 a.m. EDT; metadata assembly is not presented as a newer housing fetch.
+- Run instructions: `README.md`, `docs/runbook.md`; presentation path: `docs/demo.md`.
+- Live acceptance artifacts: `docs/artifacts/live-discovery-acceptance.json`, `destination-import-acceptance.json`, `final-city-preferences-acceptance.json`, `network-fallback-acceptance.json`.
+- Review resolutions and substitutions: `docs/reviews/RESOLUTIONS.md`. No approval is pending; blocked external exports were replaced by local independent review.
+- Never promote model/search leads, building ranges or unverified plan amenities into confirmed vacant units. Current vacancy, unresolved charges and incomplete coverage stay visible.

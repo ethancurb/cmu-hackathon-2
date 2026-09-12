@@ -92,7 +92,7 @@ export const TransitContextSchema = z.object({
   originStopId: z.string().min(1), originStopName: z.string().min(1), distanceMeters: z.number().nonnegative(),
   distanceBasis: z.enum(['straight_line', 'walking_route']), routeShortName: z.string().min(1), headsign: z.string().min(1),
   destinationStopId: z.string().nullable(), servesDestination: z.boolean(), serviceDate: z.string().date(), window: z.string().min(1),
-  feedVersion: z.string().min(1), evidenceIds: z.array(IdSchema),
+  feedVersion: z.string().min(1), evidenceIds: z.array(IdSchema), destinationId: IdSchema.optional(), destinationVersion: z.string().min(1).optional(),
 }).strict();
 
 export const NearbyPlaceSchema = z.object({

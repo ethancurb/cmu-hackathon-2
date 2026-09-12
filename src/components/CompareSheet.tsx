@@ -1,6 +1,6 @@
 import { ArrowUpRight, X } from 'lucide-react';
 import type { Criteria, EvaluatedHome, Home, Snapshot } from '../domain/schema.js';
-import { destinationName, dollars, homeRoute, layout, minute, title, utilities, utilityFor, utilityState, wholeRentLabel } from '../lib/view.js';
+import { destinationName, dollars, homeRoute, layout, minute, title, transitFor, utilities, utilityFor, utilityState, wholeRentLabel } from '../lib/view.js';
 
 type Item = { home: Home; result: EvaluatedHome | undefined };
 type Props = { items: Item[]; snapshot: Snapshot; criteria: Criteria; onClose: () => void; onRemove: (id: string) => void };
@@ -13,7 +13,7 @@ export function CompareSheet({ items, snapshot, criteria, onClose, onRemove }: P
     { label: 'Layout', value: ({ home }) => layout(home) },
     ...utilities.map(u => ({ label: u.label, value: ({ home }: Item) => utilityState(utilityFor(home,u.key)) })),
     { label: `Walk to ${destinationName(criteria)}`, value: ({ result }) => { const route = result && homeRoute(snapshot,result); return route?.status === 'ok' ? <>{minute(route.durationSeconds)} <small>{(route.distanceMeters! / 1000).toFixed(1)} km · computed foot route</small></> : 'Unverified'; } },
-    { label: 'Transit', value: ({ home }) => home.transit.length ? home.transit.slice(0,2).map(t => `Route ${t.routeShortName} · ${t.servesDestination ? 'serves a stop near destination' : 'nearby stop only'}`).join('; ') : 'No recorded context' },
+    { label: 'Transit', value: ({ home }) => transitFor(home, criteria).length ? transitFor(home, criteria).slice(0,2).map(t => `Route ${t.routeShortName} · ${t.servesDestination ? 'serves a stop near destination' : 'nearby stop only'}`).join('; ') : 'No context verified for this destination' },
     { label: 'Errands', value: ({ home }) => home.nearby.length ? home.nearby.slice(0,3).map(n => `${n.name} (${Math.round(n.distanceMeters)} m ${n.distanceBasis.replaceAll('_',' ')})`).join('; ') : 'No recorded context' },
     { label: 'Features', value: ({ home }) => home.amenities.length ? home.amenities.filter(a => a.fact.value === true).map(a => a.label).join('; ') || 'None confirmed' : 'No recorded context' },
     { label: 'Availability / lease', value: ({ home }) => <>{home.availability.value ? `Advertised ${home.availability.value}; confirm vacancy` : 'Availability unknown'} · {home.leaseTerms.value ? home.leaseTerms.state === 'derived' ? `Property listing mentions ${home.leaseTerms.value}; confirm for this plan` : home.leaseTerms.value : 'Lease terms unknown'}</> },

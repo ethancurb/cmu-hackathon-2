@@ -35,4 +35,23 @@ describe('enrichRoutes', () => {
     expect(result.homes).toEqual([]);
     expect(messages.join(' ')).toContain('unsupported outside Pittsburgh');
   });
+
+  test('drops transit for an old destination when GTFS refresh fails', async () => {
+    const criteria = { ...SEED_CRITERIA, destination: { ...SEED_CRITERIA.destination, id: 'destination:alternate', version: 'alternate-v1', label: 'Alternate campus point' } };
+    const home = home2400({ transit: [{ originStopId: 'old-stop', originStopName: 'Old stop', distanceMeters: 40, distanceBasis: 'straight_line', routeShortName: '61A', headsign: 'CMU', destinationStopId: 'gates-stop', servesDestination: true, serviceDate: '2026-09-14', window: '08:00–09:00', feedVersion: 'feed-old', evidenceIds: [], destinationId: SEED_CRITERIA.destination.id, destinationVersion: SEED_CRITERIA.destination.version }] });
+    const result = await enrichSnapshot(syntheticSnapshot([home]), criteria, new AbortController().signal, undefined, {
+      route: async () => matchingRoute({ destinationId: criteria.destination.id, destinationVersion: criteria.destination.version, requestedDestination: criteria.destination.coordinate, snappedDestination: criteria.destination.coordinate }),
+      loadGtfs: async () => { throw new Error('GTFS unavailable'); }, queryOsm: async () => [],
+    });
+    expect(result.homes[0]?.transit).toEqual([]);
+  });
+
+  test('keeps exact-destination transit when a same-destination GTFS refresh fails', async () => {
+    const context = { originStopId: 'current-stop', originStopName: 'Current stop', distanceMeters: 40, distanceBasis: 'straight_line' as const, routeShortName: '61A', headsign: 'CMU', destinationStopId: 'gates-stop', servesDestination: true, serviceDate: '2026-09-14', window: '08:00–09:00', feedVersion: 'feed-current', evidenceIds: [], destinationId: SEED_CRITERIA.destination.id, destinationVersion: SEED_CRITERIA.destination.version };
+    const home = home2400({ transit: [context] });
+    const result = await enrichSnapshot(syntheticSnapshot([home]), SEED_CRITERIA, new AbortController().signal, undefined, {
+      route: async () => matchingRoute(), loadGtfs: async () => { throw new Error('GTFS unavailable'); }, queryOsm: async () => [],
+    });
+    expect(result.homes[0]?.transit).toEqual([context]);
+  });
 });

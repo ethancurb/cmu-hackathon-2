@@ -25,6 +25,17 @@ export class PublicPageError extends Error {
 }
 export type ResolvedAddress = { address: string; family: 4 | 6 };
 export type PublicPageOptions = { resolveHost?: (hostname: string) => Promise<ResolvedAddress[]> };
+const cancelled = () => new PublicPageError('timeout', `Source request exceeded ${REQUEST_TIMEOUT_MS}ms`);
+const throwIfAborted = (signal?: AbortSignal) => { if (signal?.aborted) throw cancelled(); };
+const awaitWithAbort = <T>(work: Promise<T>, signal?: AbortSignal): Promise<T> => {
+  throwIfAborted(signal);
+  if (!signal) return work;
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(cancelled());
+    signal.addEventListener('abort', abort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+};
 
 const normalizedHost = (hostname: string) => hostname.toLowerCase().replace(/\.$/, '');
 const allowedHost = (hostname: string) => REGISTERED_HOSTS.has(normalizedHost(hostname)) && !isIP(hostname);
@@ -55,8 +66,8 @@ function validateUrl(input: string | URL): URL {
   return url;
 }
 
-export async function resolvePublicHost(hostname: string, resolveHost: PublicPageOptions['resolveHost'] = defaultResolveHost): Promise<ResolvedAddress> {
-  const addresses = await resolveHost!(normalizedHost(hostname));
+export async function resolvePublicHost(hostname: string, resolveHost: PublicPageOptions['resolveHost'] = defaultResolveHost, signal?: AbortSignal): Promise<ResolvedAddress> {
+  const addresses = await awaitWithAbort(resolveHost!(normalizedHost(hostname)), signal);
   if (!addresses.length || addresses.some(item => !publicAddress(item.address))) throw new PublicPageError('private_address', 'Public source host resolved to a private or invalid address.');
   return addresses[0]!;
 }
@@ -70,6 +81,7 @@ export function pinnedLookup(pinned: ResolvedAddress) {
 }
 
 async function requestPage(url: URL, pinned: ResolvedAddress, signal: AbortSignal): Promise<{ status: number; location: string | undefined; html: string }> {
+  throwIfAborted(signal);
   return new Promise((resolve, reject) => {
     let settled = false;
     const finish = (error?: Error, value?: { status: number; location: string | undefined; html: string }) => {
@@ -100,18 +112,20 @@ async function requestPage(url: URL, pinned: ResolvedAddress, signal: AbortSigna
 }
 
 async function fetchPublicPageOnce(input: string | URL, signal?: AbortSignal, options: PublicPageOptions = {}): Promise<Capture> {
+  throwIfAborted(signal);
   const url = validateUrl(input);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const onAbort = () => controller.abort();
   signal?.addEventListener('abort', onAbort, { once: true });
+  if (signal?.aborted) onAbort();
   try {
-    const first = await requestPage(url, await resolvePublicHost(url.hostname, options.resolveHost), controller.signal);
+    const first = await requestPage(url, await resolvePublicHost(url.hostname, options.resolveHost, controller.signal), controller.signal);
     let finalUrl = url; let response = first;
     if (first.status >= 300 && first.status < 400) {
       if (!first.location) throw new PublicPageError('network', 'Redirect missing location');
       finalUrl = validateUrl(new URL(first.location, url));
-      response = await requestPage(finalUrl, await resolvePublicHost(finalUrl.hostname, options.resolveHost), controller.signal);
+      response = await requestPage(finalUrl, await resolvePublicHost(finalUrl.hostname, options.resolveHost, controller.signal), controller.signal);
       if (response.status >= 300 && response.status < 400) throw new PublicPageError('network', 'More than one redirect is not accepted');
     }
     if (response.status === 401 || response.status === 403 || response.status === 429) throw new PublicPageError('access_denied', `Source denied access (${response.status})`);

@@ -1,4 +1,4 @@
-# Planning review resolutions
+# Review resolutions
 
 Root reconciliation, September 12, 2026. Reviewer reports are preserved unchanged as opinions/evidence; the canonical spec and contract incorporate the decisions below.
 
@@ -21,3 +21,17 @@ Root reconciliation, September 12, 2026. Reviewer reports are preserved unchange
 | Terra: five-hour scope needs dependency gate | Added early seed counts/reallocation, a proven-source fallback, and 9:30 a.m. stabilization; optional expansions do not displace evidence/core behavior |
 
 No reviewer recommendation authorizes fabricated records, silently changed criteria, removal of the four accepted functions, unbounded model spend, or an application build before the user's final go.
+
+## Implemented application reviews
+
+- OpenCode Go GLM-5.3 reviewed the decision engine. Corrections cover evidence-backed hard facts, optional charges, smallest threshold changes, source identity, material refresh diffs and stale route handling. Regression results are recorded in the build and final verification reports.
+- Native Terra reviewed API integration after automatic approval review rejected the separate backend source-code export. Queue isolation, snapshot-bound routing/imports, exact host validation, DNS pinning and bounded follow-on page checks were corrected. A real network refresh caught and fixed Node 26's lookup-all callback mismatch that mocked DNS checks had missed.
+- The five-record source audit found property photographs, amenities, leases and selective concessions scoped too strongly to plans, plus an old availability date not flagged for readiness. Corrected adapters preserve property context without asserting plan applicability. Missing rent-style values remain unknown, heat is not inferred to mean gas, and utility inclusion requires evidence at the applicable scope.
+- Fable visual1 drove the implemented criteria-first layout, denser source rows, compact utility summaries, quieter map, distinct Gates marker, self-hosted Plex typography and mobile controls. Actual browser checks caught and corrected comparison being inaccessible without a shortlist and alternative previews exposing internal IDs.
+- Fable visual2 scored the rendered candidate 7.5/10 and identified two release blockers: misleading sort wording and a route/marker mismatch in the screenshot. The default ordering now has an explicit `smallest_change` contract. The route was independently checked: its last provider coordinate is within roughly 4 cm of the mapped Gates point, and its settled SVG endpoint is within 2.7 pixels of the marker. **The recommendation to change the provider geometry or move the real entrance was rejected.** The repair is to map rendering/zoom transitions, followed by another actual detail screenshot review.
+- A full application discovery job completed in approximately 71 seconds, publishing 65 options including six explicitly unverified web leads. A separate real API check proved Gates-route invalidation, three newly computed Hunt Library routes, city isolation and a URL-only Bentley unit import without duplication. The audited 49-option CMU seed was restored after these checks.
+
+- Destination-scoped transit is now checked by both enrichment and the rendered detail/comparison views. Changing a destination immediately hides previous service claims; failed transit refreshes can preserve only exact-destination context. The audited Gates seed received destination metadata without changing original source capture or schedule dates.
+- Source cancellation now interrupts DNS waits as well as HTTPS; an already-cancelled call does not start DNS. Cross-market imports start a separate inventory rather than relabeling old-market homes. Same-market imports retain geographic context only while coordinates agree.
+- The final screenshot export to Fable was rejected by automatic approval review, which stated that the earlier approval covered two named packets rather than the new screenshot payload. No export workaround was attempted. An independent native Sol reviewer inspected the actual final desktop, detail and mobile screenshots and found no release blocker; see `final-local-visual-review.md`. Fable's two completed rendered reviews remain part of the design evidence.
+- Actual production browser checks confirmed a real New York geocoder result, empty Pittsburgh inventory after that city change, working rent sort, utility-inclusion uncertainty, reset behavior, and continued access to saved facts/routes when external map/photo requests are blocked.

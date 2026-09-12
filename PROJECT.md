@@ -8,7 +8,7 @@ This is the canonical product direction, established with the user on September 
 
 The user explicitly endorsed that question and added an equally important requirement: carry the burden of searching a fragmented housing market. A person faces many sites, many homes, many interacting life preferences, and changing priorities. Each change can force them to repeat the research. The product must make that whole decision manageable.
 
-The intended scope is city-wide housing discovery across major sources, adaptable to someone relocating for a job, school, or another life change. The user has selected a fully seeded CMU search for the initial demonstration, with the criteria below. The general product remains adaptable to other destinations and whole-city searches. Source access remains to be established during planning. Gathering relevant options is part of the product's job.
+The intended scope is city-wide housing discovery across major sources, adaptable to someone relocating for a job, school, or another life change. The user has selected a fully seeded CMU search for the initial demonstration, with the criteria below. The general product remains adaptable to other destinations and whole-city searches. Current working source adapters and access gaps are documented in `docs/reports/coverage-audit.md`. Gathering relevant options remains part of the product's job.
 
 The system should do the gathering, reconciliation, comparison, and reconsideration needed to present useful options. The renter retains control of priorities and the final decision.
 
@@ -31,7 +31,7 @@ The product promise is:
 
 ## Requested CMU demonstration
 
-The user wants to wake up to a populated version they can personally review, rather than having to collect listings or configure the initial search. Planning identified sourced leads and tested discovery; the versioned application seed must still be collected and validated during the build.
+The user wants to wake up to a populated version they can personally review, rather than having to collect listings or configure the initial search. The implemented application contains a versioned, audited CMU seed collected from real public pages. `docs/BUILD-STATUS.md` records acceptance and handoff status.
 
 | Criterion | Current requirement |
 | --- | --- |
@@ -45,7 +45,7 @@ The user wants to wake up to a populated version they can personally review, rat
 | Transit | Consider relevant bus routes and stops, including whether they serve the intended destination and direction; a bus alternative does not silently override the walking limit |
 | Timing | User confirmed flexible move-in date and lease duration. Still show stated availability and lease terms, and flag missing or stale information |
 | Review experience | A populated, browsable list of options, connected map, comparisons, editable criteria, and visible sources and uncertainties |
-| Morning review | User expects the first viewing around 10–11 a.m. EDT on September 12, 2026. Use 10 a.m. EDT (14:00 UTC) as the internal readiness target for a runnable, fully seeded candidate, leaving the viewing window for review and corrections |
+| Morning review | User revised the target to approximately 11 a.m. EDT on September 12, 2026 (15:00 UTC), give or take; preserve important quality work rather than rushing to an exact cutoff |
 
 Seed the eventual demo with sourced housing records and provenance, and accurately label when they were checked. A saved snapshot is not proof of current vacancy. If the data contains no exact matches, report that result and show separately identified near-matches with their specific deviations. Do not fabricate qualifying homes, assume unknown fields pass, or silently relax the request to fill the screen. The acceptance target concerns a usable populated search and truthful results, not a guaranteed number of exact matches.
 

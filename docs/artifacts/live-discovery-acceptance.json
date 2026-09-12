@@ -1,0 +1,89 @@
+{
+  "checkedAt": "2026-09-12T11:12:37.908Z",
+  "before": "research-20260912110301-005cbe0c",
+  "job": {
+    "id": "e422bebc-299e-484c-a924-b5573e0e8e7f",
+    "type": "discovery",
+    "status": "partial",
+    "createdAt": "2026-09-12T11:11:26.275Z",
+    "updatedAt": "2026-09-12T11:12:37.045Z",
+    "progress": {
+      "completed": 65,
+      "total": 65,
+      "message": "65 options researched · 16 added · 10 changed · 24 locations still unverified · some sources or context remain incomplete."
+    },
+    "snapshotId": "research-20260912111237-ba78a2a7",
+    "error": null
+  },
+  "snapshot": {
+    "id": "research-20260912111237-ba78a2a7",
+    "homes": 65,
+    "verifiedSourcePages": 5,
+    "indexedLeads": 6,
+    "sourceRuns": [
+      {
+        "sourceId": "cmu-offcampus",
+        "status": "imported",
+        "pages": 1,
+        "observations": 34,
+        "error": "CMU embedded data: retained 24 nearby active 2-bedroom floorplans from 152 properties"
+      },
+      {
+        "sourceId": "lobos-management",
+        "status": "imported",
+        "pages": 2,
+        "observations": 13,
+        "error": null
+      },
+      {
+        "sourceId": "reinhold-residential",
+        "status": "imported",
+        "pages": 1,
+        "observations": 2,
+        "error": null
+      },
+      {
+        "sourceId": "index:shadysidehome.com",
+        "status": "queried",
+        "pages": 0,
+        "observations": 2,
+        "error": null
+      },
+      {
+        "sourceId": "index:pittsburghoffcampus.com",
+        "status": "queried",
+        "pages": 0,
+        "observations": 1,
+        "error": null
+      },
+      {
+        "sourceId": "apartments-com",
+        "status": "queried",
+        "pages": 0,
+        "observations": 1,
+        "error": null
+      },
+      {
+        "sourceId": "index:forbesmanagement.net",
+        "status": "queried",
+        "pages": 0,
+        "observations": 1,
+        "error": null
+      },
+      {
+        "sourceId": "index:tripalink.com",
+        "status": "queried",
+        "pages": 0,
+        "observations": 1,
+        "error": null
+      },
+      {
+        "sourceId": "cmu-offcampus",
+        "status": "fetched",
+        "pages": 1,
+        "observations": 0,
+        "error": "No supported unit-level structure."
+      }
+    ]
+  }
+}

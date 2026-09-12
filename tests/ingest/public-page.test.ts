@@ -17,4 +17,22 @@ describe('public source host boundary', () => {
     });
     expect(result).toEqual([{ address: '93.184.216.34', family: 4 }]);
   });
+  it('does not begin DNS resolution for an already-aborted source request', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let resolved = false;
+    await expect(fetchPublicPage('https://lobosmanagement.com/units', controller.signal, {
+      resolveHost: async () => { resolved = true; return [{ address: '93.184.216.34', family: 4 }]; },
+    })).rejects.toMatchObject({ code: 'timeout' });
+    expect(resolved).toBe(false);
+  });
+  it('stops waiting for injected DNS resolution when the source request aborts', async () => {
+    const controller = new AbortController();
+    let release!: (addresses: Array<{ address: string; family: 4 }>) => void;
+    const lookup = new Promise<Array<{ address: string; family: 4 }>>(resolve => { release = resolve; });
+    const pending = fetchPublicPage('https://lobosmanagement.com/units', controller.signal, { resolveHost: async () => lookup });
+    controller.abort();
+    release([{ address: '127.0.0.1', family: 4 }]);
+    await expect(pending).rejects.toMatchObject({ code: 'timeout' });
+  });
 });
