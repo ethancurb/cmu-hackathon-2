@@ -74,6 +74,24 @@
 .brand-tagline:is(button):hover { border-color: var(--route); color: var(--route); }
 .reset-button { padding: 2px 0; border: 0; border-bottom: 1px solid var(--line-strong); background: transparent; color: var(--ink-secondary); font-size: 11px; }
 .reset-button:hover { color: var(--route); border-color: var(--route); }
+.account-loading,.account-disabled { color: var(--ink-tertiary); font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
+.account-menu { position: relative; z-index: 150; }
+.account-menu summary { display: flex; align-items: center; gap: 4px; min-height: 27px; padding: 3px 0; border-bottom: 1px solid transparent; color: var(--ink-secondary); cursor: pointer; font-size: 11px; list-style: none; }
+.account-menu summary::-webkit-details-marker { display: none; }
+.account-menu[open] summary,.account-menu summary:hover { border-color: var(--route); color: var(--route); }
+.account-menu summary>span { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-popover { position: absolute; right: 0; top: calc(100% + 7px); display: flex; flex-direction: column; align-items: flex-start; min-width: 190px; gap: 7px; padding: 12px; border: 1px solid var(--line-strong); background: var(--surface); box-shadow: 0 10px 28px #1416141c; color: var(--ink); font-size: 11px; }
+.account-popover strong { font-size: 12px; font-weight: 600; }
+.account-title,.account-copy { margin: 0; color: var(--ink-secondary); line-height: 1.35; }
+.account-copy { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: .05em; }
+.account-email { max-width: 220px; overflow: hidden; color: var(--ink-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.account-verified { color: var(--route); font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: .05em; }
+.account-link { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 3px 0; color: var(--ink-secondary); font-size: 11px; text-decoration: none; }
+.account-link:hover { color: var(--route); text-decoration: underline; text-underline-offset: 2px; }
+.account-link.primary { width: 100%; justify-content: center; padding: 6px 8px; background: var(--ink); color: var(--surface); }
+.account-link.primary:hover { background: var(--route); color: #fff; text-decoration: none; }
+.account-error { display: inline-flex; align-items: center; gap: 4px; color: var(--amber); font-size: 10px; white-space: nowrap; }
+.account-error button { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; border-bottom: 1px solid currentColor; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .criteria-line { margin: 0; min-height: 62px; gap: 7px; font-size: 14px; font-weight: 400; }
 .criteria-intro { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }
 .criterion-trigger strong { font-weight: 600; }
@@ -152,6 +170,7 @@
 @media (max-width: 900px) { .app-header { min-height: 50px; }.workspace-mode { display: flex; }.criteria-line { min-height: 54px; }.zero-banner { padding-inline: 16px; }.alternatives { padding-inline: 16px; }.group-heading { padding-inline: 16px; } }
 @media (max-width: 640px) {
   .app-header { padding-inline: 11px; }.brand-tagline,.brand-divider,.snapshot-label,.reset-button { display: none; }.header-actions { gap: 7px; }.find-button { min-height: 29px; padding: 3px 6px; font-size: 10px; }.mode-button { padding: 5px; font-size: 10px; }
+  .account-menu summary>span,.account-loading,.account-disabled,.account-error>span { display: none; }.account-popover { right: -40px; min-width: 180px; }.account-menu summary { min-height: 29px; }
   .criteria-line { display: none; }.mobile-criteria-summary { display: flex; align-items: center; justify-content: space-between; gap: 7px; width: 100%; min-height: 42px; padding: 7px 12px; border: 0; background: var(--surface); color: var(--ink); text-align: left; font-size: 12px; white-space: nowrap; }.mobile-criteria-summary>span { overflow: hidden; text-overflow: ellipsis; }.mobile-criteria-summary svg { flex: 0 0 auto; color: var(--route); }.criteria-wrap.mobile-open .criteria-line { display: flex; min-height: 0; padding: 10px 13px; font-size: 12px; }.criteria-wrap.mobile-open .criteria-tail { display: flex; }.criteria-wrap:not(.mobile-open) .baseline-note,.criteria-wrap:not(.mobile-open) .more-panel { display: none; }
   .coverage-strip { flex-wrap: nowrap; min-height: 33px; padding: 4px 12px; }.coverage-primary { gap: 7px; min-width: 0; overflow: hidden; white-space: nowrap; font-size: 10px; }.coverage-primary svg { display: none; }.coverage-primary>span:not(.coverage-divider) { display: none; }.coverage-secondary { width: auto; margin-left: auto; gap: 8px; }.coverage-secondary .refresh-button { display: none; }.coverage-disclosure summary { font-size: 10px; }
   .zero-banner { display: block; padding: 7px 12px; font-size: 10px; line-height: 1.3; }.zero-banner strong { display: block; margin-bottom: 2px; font-size: 12px; }

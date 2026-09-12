@@ -72,3 +72,9 @@ The plan must map C01–C22 to implementation tasks or explicit scope decisions,
 ## Build authorization and revised target
 
 The user commissioned the autonomous full build, public-source research, iteration, and Fable/OpenCode Go reviews at the coordinator's discretion. The viewing target is approximately 11 a.m. EDT September 12, give or take; do not sacrifice important work or quality to an exact deadline. This supersedes the earlier 10 a.m. target and the pending-go status. See `../BUILD-STATUS.md`.
+
+## Post-handoff account request
+
+The user requested a rapid Auth0/account addition, prioritizing speed and accuracy over extensive production hardening. They asked whether it needs an application database or MongoDB, the likely effort, and whether it can be completed in one focused pass. Asked whether they already have an Auth0 account/tenant, they answered “Not sure.” The dashboard was opened for their sign-in or registration; no password or tenant credentials were provided.
+
+The assistant's recommendation is Auth0 Universal Login integrated into the existing Express server, with email/password accounts, a session, logout and a compact account menu. Auth0 supplies the user store; an application database is optional and serves a different purpose: synchronizing saved housing work across devices. Current saved searches live in browser storage and need separate account namespaces. The proposed database-free scope, setup, implementation and verification are recorded in [the Auth0 plan](../superpowers/plans/2026-09-12-auth0.md). This is a plan, not an implemented authentication feature or a user decision against future database-backed saved work.

@@ -1,5 +1,7 @@
 # Housing project: guiding brief
 
+Current working name: **OneStop**, proposed by the user and applied provisionally while naming is discussed. The name emphasizes bringing housing research into one place.
+
 This is the canonical product direction, established with the user on September 12, 2026. It precedes the detailed design, implementation plan, and build. Read it alongside `hackcmu-intel/AGENT_BRIEF.md`. The intelligence pack supplies competition context; this file supplies the replacement project's purpose.
 
 ## Confirmed core
@@ -94,6 +96,14 @@ The backend carries the same product obligations: reliable collection, reconcili
 Data access is the first major feasibility question. A list of desired websites is not proof of working coverage. The eventual plan must establish actual access paths and make any limitations explicit while preserving useful progress.
 
 ## Competition and decision discipline
+
+The user reaffirmed after viewing the demo that the renter's problem must remain the anchor and asked how this differs from Zillow. The core problem is the repeated manual work of finding options across sources, reconciling inconsistent claims, checking everyday consequences, and revisiting the whole comparison when a requirement changes. The working name is secondary to removing that work.
+
+Competitive claims were rechecked on September 12, 2026. Zillow documents [commute and points-of-interest search](https://www.zillow.com/news/zillows-ai-powered-home-search-gets-smarter-with-new-natural-language-features/), [total monthly pricing and fee calculators](https://www.zillow.com/learn/rental-pricing-transparency/), and [AI-assisted comparisons, tradeoffs and remembered preferences](https://www.zillow.com/news/zillow-debuts-ai-mode/). The March AI-mode announcement describes a limited beta; this documentation review does not establish its present availability for every account. Maps, filters, AI, utility information and comparisons alone do not establish our differentiation.
+
+The strongest proposed position is a renter's research workspace spanning supported independent sources: maintain comparable offer records, apply the same personal-budget and destination rules, retain evidence and unknowns, compute explicit reversible compromises, and identify consequential questions before a tour. The current demo proves parts of this workflow with three directly imported housing organizations and a bounded 49-record seed. It has not proved superior market coverage, exclusive inventory, or reduced research time compared with Zillow. A zero-match snapshot must never be described as proof that the city has no matches.
+
+The next competitive proof should compare the same renter task against a Zillow-plus-maps/manual-notes workflow: relevant distinct options found, time to a reasoned shortlist, manual lookups required, material cost/availability mistakes, and work needed after changing a requirement. These are evaluation criteria, not measured improvements or an automatic authorization to expand the implementation. Every feature should help find an overlooked option, make a consequence comparable, expose a meaningful compromise, resolve an important uncertainty, or avoid repeating research.
 
 Optimization is the current recommendation for main-track fit, not yet a final selection. The demonstration should make the research burden, a useful comparison, and the consequence of changing a preference visible within the event's three-minute limit.
 

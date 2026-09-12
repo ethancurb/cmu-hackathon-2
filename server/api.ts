@@ -7,6 +7,8 @@ import { createJobManager, type JobOutput } from './jobs.js';
 import type { SnapshotStore } from './snapshots.js';
 import { AppError } from './errors.js';
 import { SOURCE_REGISTRY } from '../jobs/sources/registry.js';
+import type { ConfigParams } from 'express-openid-connect';
+import { mountAuth } from './auth.js';
 
 export type Workflows = {
   discovery: (criteria: Criteria, signal: AbortSignal, progress: (message: string) => void) => Promise<JobOutput>;
@@ -14,7 +16,7 @@ export type Workflows = {
   destinations: (query: string, market: Criteria['market'], signal: AbortSignal) => Promise<Destination[]>;
   import: (sourceId: string, url: string, text: string, signal: AbortSignal, progress: (message: string) => void, context?: { snapshotId: string; criteria: Criteria }) => Promise<JobOutput>;
 };
-export type ApiOptions = { store: SnapshotStore; workflows: Workflows; seed?: Criteria; staticDirectory?: string; discoveryEnabled?: boolean; routingEnabled?: boolean };
+export type ApiOptions = { store: SnapshotStore; workflows: Workflows; seed?: Criteria; staticDirectory?: string; discoveryEnabled?: boolean; routingEnabled?: boolean; authConfig?: ConfigParams | null };
 
 const key = (input: unknown) => createHash('sha256').update(JSON.stringify(input)).digest('hex');
 const unavailable = (capability: string) => new AppError('CAPABILITY_UNAVAILABLE', `${capability} is unavailable in this viewing session. Saved research remains usable.`, 503);
@@ -25,6 +27,7 @@ export function createApp(options: ApiOptions) {
   const jobs = createJobManager(options.store.publish);
   const seed = options.seed ?? SEED_CRITERIA;
   app.disable('x-powered-by');
+  mountAuth(app, options.authConfig ?? null);
   app.use((request, response, next) => {
     response.locals.requestId = randomUUID();
     response.setHeader('X-Content-Type-Options', 'nosniff');
