@@ -40,6 +40,9 @@ export function validateExtractedFact(proposal: FactProposal, captures: Array<Ca
     if (!excerpt.includes(date) && !excerpt.toLowerCase().includes(proposal.value.toLowerCase())) return { accepted: false, reason: 'value_not_in_evidence' };
   } else if (typeof proposal.value === 'string' && !excerpt.toLowerCase().includes(proposal.value.toLowerCase())) {
     return { accepted: false, reason: 'value_not_in_evidence' };
+  } else if (typeof proposal.value === 'number') {
+    const supported = proposal.field === 'rent' ? moneyCents(excerpt) === proposal.value : proposal.field === 'bedrooms' ? new RegExp(`\\b${proposal.value}\\s*Beds?\\b`, 'i').test(excerpt) : proposal.field === 'bathrooms' ? new RegExp(`\\b${proposal.value}\\s*Baths?\\b`, 'i').test(excerpt) : excerpt.includes(String(proposal.value));
+    if (!supported) return { accepted: false, reason: 'value_not_in_evidence' };
   }
   return { accepted: true, reason: null };
 }

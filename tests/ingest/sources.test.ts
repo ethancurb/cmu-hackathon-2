@@ -17,6 +17,8 @@ describe('source parsing', () => {
     expect(two?.availability.evidenceIds.every((id) => two.evidence.find((evidence) => evidence.id === id)?.scopeKey === 'reinhold-482-0303')).toBe(true);
     const swapped = { field: 'availability', value: '2026-09-13', evidenceId: two!.availability.evidenceIds[0], scopeKey: 'reinhold-482-0303' };
     expect(validateExtractedFact(swapped, two!.evidence)).toEqual({ accepted: false, reason: 'value_not_in_evidence' });
+    const wrongRent = { field: 'rent', value: 252500, evidenceId: two!.rent.amount.evidenceIds[0], scopeKey: 'reinhold-482-0303' };
+    expect(validateExtractedFact(wrongRent, two!.evidence)).toEqual({ accepted: false, reason: 'value_not_in_evidence' });
   });
 
   it('rejects unregistered/private source hosts before requesting', async () => {
