@@ -49,7 +49,7 @@ async function readBounded(response: Response): Promise<string> {
   return new TextDecoder().decode(data);
 }
 
-export async function fetchPublicPage(input: string | URL, signal?: AbortSignal): Promise<Capture> {
+async function fetchPublicPageOnce(input: string | URL, signal?: AbortSignal): Promise<Capture> {
   const url = validateUrl(input);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -77,6 +77,18 @@ export async function fetchPublicPage(input: string | URL, signal?: AbortSignal)
     if ((error as Error).name === 'AbortError') throw new PublicPageError('timeout', `Source request exceeded ${REQUEST_TIMEOUT_MS}ms`);
     throw new PublicPageError('network', (error as Error).message || 'Source request failed');
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); }
+}
+
+/** One bounded retry is allowed for transient network/timeouts; denied hosts/statuses never retry. */
+export async function fetchPublicPage(input: string | URL, signal?: AbortSignal): Promise<Capture> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try { return await fetchPublicPageOnce(input, signal); }
+    catch (error) {
+      if (attempt === 1 || !(error instanceof PublicPageError) || (error.code !== 'network' && error.code !== 'timeout')) throw error;
+      if (signal?.aborted) throw error;
+    }
+  }
+  throw new PublicPageError('network', 'Source request failed after retry');
 }
 
 export function sourceIdFor(url: URL | string): string {
