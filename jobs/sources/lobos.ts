@@ -1,0 +1,32 @@
+import { load } from 'cheerio';
+import type { Capture, ObservedListing, ParseResult } from './types.js';
+import { clean, dateValue, evidenceFor, moneyCents, sourced, unknown } from './extract.js';
+
+function numberFrom(value: string, pattern: RegExp): number | null { const m = clean(value).match(pattern); return m ? Number(m[1]) : null; }
+
+export function parseLobos(capture: Capture): ParseResult {
+  const $ = load(capture.html); const listings: ObservedListing[] = []; const warnings: string[] = [];
+  $('.jet-engine-listing-overlay-wrap').each((index, node) => {
+    const card = $(node); const link = card.find('a[href*="/units/"]').first().attr('href');
+    const name = clean(card.find('h4').first().text()); const address = clean(card.find('.elementor-heading-title').filter((_, x) => /\bPA\s*\d{5}\b/i.test($(x).text())).first().text()) || clean(card.text()).match(/\b(\d{1,6}[^$]+?PA\s*\d{5})\b/i)?.[1] || '';
+    const cardText = clean(card.text()); const bed = numberFrom(cardText, /(\d+)\s*Beds?/i); const bath = numberFrom(cardText, /(\d+(?:\.5)?)\s*Baths?/i);
+    const rentMatch = cardText.match(/From\s+(\$[\d,]+(?:\.\d{2})?)/i); const amount = rentMatch ? moneyCents(rentMatch[1]) : null;
+    const availRaw = cardText.match(/Availability:\s*([^$]+?)(?=\s*$|\s*From\s|$)/i)?.[1] ?? cardText.match(/Availability:\s*(Available Now|\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1] ?? '';
+    if (!name || !address || !link) { warnings.push(`Skipped Lobos card ${index}: missing title/address/unit URL`); return; }
+    const normalizedUrl = new URL(link, capture.url).href; const unitSlug = normalizedUrl.split('/').filter(Boolean).pop() ?? String(index + 1); const scopeKey = `lobos-${unitSlug}`;
+    const context = `${name} ${address} ${bed ? `${bed} Beds` : ''} ${bath ? `${bath} Baths` : ''} ${rentMatch?.[0] ?? ''} Availability: ${availRaw}`;
+    const ev = evidenceFor(capture, scopeKey, 'offer', context, `.jet-engine-listing-overlay-wrap a[href*="${unitSlug}"]`);
+    const titleEv = evidenceFor(capture, `lobos-building-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, 'building', `${name} ${address}`, '.jet-engine-listing-overlay-wrap h4', true);
+    const availability = dateValue(availRaw) ?? (clean(availRaw) || null);
+    listings.push({
+      id: `lobos-${unitSlug}`, sourceId: capture.sourceId, sourceFamily: 'direct-manager', url: normalizedUrl, scope: 'unit',
+      buildingKey: titleEv.scopeKey, offerKey: scopeKey, floorPlanKey: null, scopeKey,
+      title: sourced(name, [titleEv.id]), address: sourced(address, [titleEv.id]), unitLabel: sourced(unitSlug, [ev.id]), propertyType: sourced('apartment', [titleEv.id]),
+      bedrooms: bed === null ? unknown() : sourced(bed, [ev.id]), bathrooms: bath === null ? unknown() : sourced(bath, [ev.id]), fullBaths: unknown(), halfBaths: unknown(),
+      rent: { basis: 'unknown', period: 'month', amount: amount === null ? unknown() : sourced(amount, [ev.id]), upperAmount: unknown(), kind: amount === null ? 'unknown' : 'from', semantics: 'base_rent' },
+      availability: availability ? sourced(availability, [ev.id]) : unknown(), utilities: [], amenities: [], evidence: [ev, titleEv],
+    });
+  });
+  if (!listings.length) warnings.push('Lobos parser found no listing cards');
+  return { listings, captures: [capture], warnings };
+}
