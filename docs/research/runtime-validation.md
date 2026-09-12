@@ -1,6 +1,14 @@
 # Runtime and CLI validation
 
-Validation was performed during the planning phase on September 12, 2026. It confirms that the named terminal clients could be invoked and return a bounded response. It does not prove unattended future uptime, application API access, or a populated housing application; application source code is not present yet.
+Initial validation was performed during planning on September 12, 2026. Implementation checks below extend it with actual application research and rendered design review. These are observed successful runs, not a guarantee of future provider or machine uptime.
+
+## Implementation validation at 06:54 EDT
+
+- Fable 5.1 read three actual rendered screenshots and returned the critique saved in [fable-visual-1.md](../reviews/fable-visual-1.md), with a successful terminal result and no permission denials.
+- OpenCode Go GLM-5.3 reviewed the implemented decision engine; its findings and corrections are saved in [domain-code-review.md](../reviews/domain-code-review.md). A later backend source-code export was rejected by automatic approval review, so a native Terra agent independently reviewed and corrected the API instead; see [backend-api-review.md](../reviews/backend-api-review.md).
+- The application's Fable WebSearch/WebFetch worker completed a real ten-lead discovery in 70,225 ms. Its output is retained privately under `data/worker/verified-live-discovery.json`; hard rent/layout facts remain unverified until a supported source parser corroborates them.
+- The first restricted-environment invocation reported unauthenticated despite normal CLI authentication working. A controlled check isolated missing `USER`/`LOGNAME` identity fields. Preserving those ordinary identity variables allowed the existing Claude.ai Max login to resolve. No credentials were printed or copied into the project, and unrelated environment tokens remain omitted.
+- A real three-source HTTP refresh subsequently completed and published `research-20260912104727-b599fa04`, with four pages retrieved and all three public organizations represented. Current app data and final acceptance are tracked in [BUILD-STATUS.md](../BUILD-STATUS.md).
 
 ## Capability checks
 

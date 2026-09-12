@@ -62,7 +62,7 @@ export function evaluateHome(home: Home, criteria: Criteria, routes: WalkRoute[]
     ...constraints.filter((constraint) => constraint.outcome === 'unknown' && ['bedrooms', 'bathrooms', 'personal_rent', 'walk', 'property_type'].includes(constraint.key)).map((constraint) => ({ key: `hard:${constraint.key}`, priority: 1, text: `Verify ${constraint.key.replace('_', ' ')} before relying on this listing.`, evidenceIds: constraint.evidenceIds })),
     ...cost.unknownItems.map((item) => ({ key: `cost:${item.key}`, priority: item.key === 'base_rent' ? 1 : 2, text: item.reason, evidenceIds: [] })),
     ...(home.availability.value === null || home.availability.state !== 'sourced' || pastAvailability || home.scope === 'floor_plan' ? [{ key: 'availability', priority: 3, text: pastAvailability ? `The source lists ${statedAvailabilityDate}, a date before this observation. Confirm a currently vacant unit and move-in date.` : home.scope === 'floor_plan' ? 'This is an advertised floor plan. Confirm a vacant unit at this price and its move-in date.' : 'Confirm current availability before touring.', evidenceIds: home.availability.evidenceIds }] : []),
-    ...(home.leaseTerms.value === null ? [{ key: 'lease_terms', priority: 4, text: 'Confirm lease term and conditions.', evidenceIds: home.leaseTerms.evidenceIds }] : []),
+    ...(home.leaseTerms.value === null || home.leaseTerms.state !== 'sourced' ? [{ key: 'lease_terms', priority: 4, text: 'Confirm lease term and conditions.', evidenceIds: home.leaseTerms.evidenceIds }] : []),
   ].sort((a, b) => a.priority - b.priority);
   const hasFail = constraints.some((constraint) => constraint.outcome === 'fail');
   const hasUnknown = constraints.some((constraint) => constraint.outcome === 'unknown');

@@ -10,6 +10,9 @@ dist-server/
 data/raw/
 data/cache/
 data/worker/
+data/current.json
+data/snapshots/
+data/seed/placed.json
 *.log
 playwright-report/
 test-results/

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { runBoundedProcess } from '../../server/process.js';
+import { runBoundedProcess, workerEnvironment } from '../../server/process.js';
 
 describe('bounded local model process boundary', () => {
+  it('preserves the OS account identity used by the authenticated CLI without inheriting unrelated credentials', () => {
+    const priorUser = process.env.USER, priorSecret = process.env.ADDRESS_TEST_UNRELATED_TOKEN;
+    process.env.USER = 'housing-worker-test'; process.env.ADDRESS_TEST_UNRELATED_TOKEN = 'do-not-forward';
+    try { expect(workerEnvironment().USER).toBe('housing-worker-test'); expect(workerEnvironment()).not.toHaveProperty('ADDRESS_TEST_UNRELATED_TOKEN'); }
+    finally { if (priorUser === undefined) delete process.env.USER; else process.env.USER = priorUser; if (priorSecret === undefined) delete process.env.ADDRESS_TEST_UNRELATED_TOKEN; else process.env.ADDRESS_TEST_UNRELATED_TOKEN = priorSecret; }
+  });
   it('passes untrusted prompt characters as literal stdin, never shell code', async () => {
     const input = '$(touch /tmp/address-should-not-run) `echo SECRET` ;\nplain';
     const result = await runBoundedProcess({

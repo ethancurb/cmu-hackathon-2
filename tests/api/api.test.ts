@@ -6,12 +6,12 @@ import type { Server } from 'node:http';
 import { SEED_CRITERIA } from '../../src/config/seed.js';
 import { home2400, syntheticSnapshot } from '../fixtures/homes.js';
 import { createSnapshotStore } from '../../server/snapshots.js';
-import { createApp } from '../../server/api.js';
+import { createApp, type Workflows } from '../../server/api.js';
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
-async function setup() {
+async function setup(overrides: Partial<Workflows> = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), 'address-api-test-'));
   cleanups.push(() => rm(directory, { recursive: true, force: true }));
   const store = createSnapshotStore(directory);
@@ -25,6 +25,7 @@ async function setup() {
     routes: async () => ({ snapshot: { ...initial, id: 'routed' } }),
     destinations: async () => [SEED_CRITERIA.destination],
     import: async () => ({ snapshot: { ...initial, id: 'imported' } }),
+    ...overrides,
   } });
   let server: Server;
   await new Promise<void>((resolve, reject) => { server = app.listen(0, '127.0.0.1', () => resolve()); server.on('error', reject); });
@@ -70,5 +71,33 @@ describe('local housing API', () => {
     const response = await post('/api/discovery', { criteria: SEED_CRITERIA }, { Origin: 'https://outside.example', 'Sec-Fetch-Site': 'cross-site' });
     expect(response.status).toBe(403);
     expect((await response.json()).error.code).toBe('ORIGIN_DENIED');
+  });
+  it('binds a queued route job to the snapshot validated at submission', async () => {
+    let receivedSnapshotId: string | undefined;
+    const { post, jobs } = await setup({
+      routes: async (_destination, _homeIds, _signal, _progress, snapshotId) => {
+        receivedSnapshotId = snapshotId;
+        return { snapshot: { ...syntheticSnapshot([]), id: 'routed' } };
+      },
+    });
+    const response = await post('/api/routes', { snapshotId: 'initial', destination: SEED_CRITERIA.destination, homeIds: ['test:home:2400'] });
+    expect(response.status).toBe(202);
+    const started = await response.json();
+    await jobs.settled(started.job.id);
+    expect(receivedSnapshotId).toBe('initial');
+  });
+  it('passes the active criteria to an import when the caller supplies it', async () => {
+    let receivedCriteria: typeof SEED_CRITERIA | undefined;
+    const { post, jobs } = await setup({
+      import: async (_sourceId, _url, _text, _signal, _progress, context) => {
+        receivedCriteria = context?.criteria;
+        return { snapshot: { ...syntheticSnapshot([]), id: 'imported' } };
+      },
+    });
+    const response = await post('/api/import', { sourceId: 'lobos-management', url: 'https://lobosmanagement.com/units/example/', snapshotId: 'initial', criteria: SEED_CRITERIA });
+    expect(response.status).toBe(202);
+    const started = await response.json();
+    await jobs.settled(started.job.id);
+    expect(receivedCriteria?.destination.version).toBe(SEED_CRITERIA.destination.version);
   });
 });

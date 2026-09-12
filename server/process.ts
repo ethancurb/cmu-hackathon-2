@@ -5,7 +5,7 @@ export type ProcessRequest = {
 export type ProcessResult = { exitCode: number; stdout: string; stderr: string };
 export function workerEnvironment(): NodeJS.ProcessEnv {
   return Object.fromEntries(
-    ['PATH', 'HOME', 'TMPDIR', 'LANG', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME']
+    ['PATH', 'HOME', 'USER', 'LOGNAME', 'TMPDIR', 'LANG', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME']
       .flatMap(key => process.env[key] === undefined ? [] : [[key, process.env[key]!]]),
   );
 }

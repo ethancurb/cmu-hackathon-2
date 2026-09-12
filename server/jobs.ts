@@ -18,6 +18,9 @@ export function createJobManager(publish: (snapshot: Snapshot) => Promise<void>,
   const start = (type: Job['type'], key: string, worker: JobWorker): Job => {
     const duplicate = [...entries.values()].find(entry => active(entry) && entry.job.type === type && entry.key === key);
     if (duplicate) return get(duplicate.job.id);
+    if (type === 'discovery' && [...entries.values()].some(entry => active(entry) && entry.job.type === 'discovery')) {
+      throw new AppError('RESEARCH_BUSY', 'Housing discovery is already queued. Please wait for the current search to finish.', 429);
+    }
     if ([...entries.values()].filter(active).length >= 3) throw new AppError('RESEARCH_BUSY', 'Research is already queued. Please wait for the current searches to finish.', 429);
     const now = new Date().toISOString();
     const job: Job = { id: randomUUID(), type, status: 'queued', createdAt: now, updatedAt: now, progress: { completed: 0, total: null, message: 'Queued for research' }, snapshotId: null, error: null };

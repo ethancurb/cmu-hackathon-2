@@ -6,17 +6,19 @@ import { evaluateSearch } from '../src/domain/engine.js';
 import { createJobManager, type JobOutput } from './jobs.js';
 import type { SnapshotStore } from './snapshots.js';
 import { AppError } from './errors.js';
+import { SOURCE_REGISTRY } from '../jobs/sources/registry.js';
 
 export type Workflows = {
   discovery: (criteria: Criteria, signal: AbortSignal, progress: (message: string) => void) => Promise<JobOutput>;
-  routes: (destination: Destination, homeIds: string[], signal: AbortSignal, progress: (message: string) => void) => Promise<JobOutput>;
+  routes: (destination: Destination, homeIds: string[], signal: AbortSignal, progress: (message: string) => void, expectedSnapshotId: string) => Promise<JobOutput>;
   destinations: (query: string, market: Criteria['market'], signal: AbortSignal) => Promise<Destination[]>;
-  import: (sourceId: string, url: string, text: string, signal: AbortSignal, progress: (message: string) => void) => Promise<JobOutput>;
+  import: (sourceId: string, url: string, text: string, signal: AbortSignal, progress: (message: string) => void, context?: { snapshotId: string; criteria: Criteria }) => Promise<JobOutput>;
 };
 export type ApiOptions = { store: SnapshotStore; workflows: Workflows; seed?: Criteria; staticDirectory?: string; discoveryEnabled?: boolean; routingEnabled?: boolean };
 
 const key = (input: unknown) => createHash('sha256').update(JSON.stringify(input)).digest('hex');
 const unavailable = (capability: string) => new AppError('CAPABILITY_UNAVAILABLE', `${capability} is unavailable in this viewing session. Saved research remains usable.`, 503);
+const sourceHost = (url: string) => new URL(url).hostname.toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
 
 export function createApp(options: ApiOptions) {
   const app = express();
@@ -59,11 +61,11 @@ export function createApp(options: ApiOptions) {
   });
   app.post('/api/routes', async (request, response) => {
     if (options.routingEnabled === false) throw unavailable('New walking routes');
-    const body = z.object({ snapshotId: z.string(), destination: DestinationSchema, homeIds: z.array(z.string()).max(60) }).strict().parse(request.body);
+    const body = z.object({ snapshotId: z.string(), destination: DestinationSchema, homeIds: z.array(z.string()).max(100) }).strict().parse(request.body);
     const current = await options.store.loadCurrent();
     if (body.snapshotId !== current.id) throw new AppError('STALE_SNAPSHOT', 'New research is available. Refresh before recomputing routes.', 409);
     if (body.homeIds.some(id => !current.homes.some(home => home.id === id))) throw new AppError('UNKNOWN_HOME', 'A requested home does not exist in this snapshot.', 400);
-    const job = jobs.start('routes', key(body), (signal, progress) => options.workflows.routes(body.destination, body.homeIds, signal, progress));
+    const job = jobs.start('routes', key(body), (signal, progress) => options.workflows.routes(body.destination, body.homeIds, signal, progress, body.snapshotId));
     response.status(202).json({ job });
   });
   app.get('/api/jobs/:id', (request, response) => response.json({ job: jobs.get(request.params.id) }));
@@ -79,10 +81,20 @@ export function createApp(options: ApiOptions) {
     const candidates = await options.workflows.destinations(body.query, body.market, AbortSignal.timeout(18000));
     response.json({ candidates });
   });
-  app.post('/api/import', (request, response) => {
+  app.post('/api/import', async (request, response) => {
     if (options.discoveryEnabled === false) throw unavailable('Source import');
-    const body = z.object({ sourceId: z.string().min(1).max(100), url: z.url().max(2000), text: z.string().min(1).max(80000) }).strict().parse(request.body);
-    const job = jobs.start('discovery', key(body), (signal, progress) => options.workflows.import(body.sourceId, body.url, body.text, signal, progress));
+    const body = z.object({ sourceId: z.string().min(1).max(100), url: z.url().max(2000).refine(value => { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password && (!url.port || url.port === '443'); }, 'Listing URL must use standard HTTPS without credentials.'), text: z.string().max(80000).default(''), snapshotId: z.string().optional(), criteria: CriteriaSchema.optional() }).strict().superRefine((value, ctx) => {
+      if (Boolean(value.snapshotId) !== Boolean(value.criteria)) ctx.addIssue({ code: 'custom', message: 'Snapshot and criteria must be supplied together.' });
+    }).parse(request.body);
+    const source = SOURCE_REGISTRY.find(item => item.id === body.sourceId);
+    if (!source) throw new AppError('UNKNOWN_SOURCE', 'Choose a source from the research ledger.', 400);
+    if (sourceHost(source.url) !== sourceHost(body.url)) throw new AppError('SOURCE_URL_MISMATCH', 'Choose a listing URL from the selected source.', 400);
+    if (body.snapshotId && body.criteria) {
+      const current = await options.store.loadCurrent();
+      if (body.snapshotId !== current.id) throw new AppError('STALE_SNAPSHOT', 'New research is available. Refresh before importing a listing.', 409);
+    }
+    const context = body.snapshotId && body.criteria ? { snapshotId: body.snapshotId, criteria: body.criteria } : undefined;
+    const job = jobs.start('discovery', key(body), (signal, progress) => options.workflows.import(body.sourceId, body.url, body.text, signal, progress, context));
     response.status(202).json({ job });
   });
   app.use('/api', (_request, _response, next) => next(new AppError('NOT_FOUND', 'That endpoint does not exist.', 404)));

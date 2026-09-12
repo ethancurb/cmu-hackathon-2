@@ -24,6 +24,15 @@ describe('research job lifecycle', () => {
     await manager.settled(second.id);
     expect(order).toEqual(['first', 'second']);
   });
+  it('rejects a different discovery request while discovery is active', async () => {
+    const manager = createJobManager(async () => undefined);
+    let release!: () => void;
+    const waiting = new Promise<void>(resolve => { release = resolve; });
+    const first = manager.start('discovery', 'criteria-a', async () => { await waiting; return { snapshot: data('one') }; });
+    expect(() => manager.start('discovery', 'criteria-b', async () => ({ snapshot: data('two') }))).toThrow(/already queued/i);
+    release();
+    await manager.settled(first.id);
+  });
   it('terminates a timed-out job without publishing a late result', async () => {
     let publicationCount = 0;
     const manager = createJobManager(async () => { publicationCount += 1; }, { timeoutMs: 20 });

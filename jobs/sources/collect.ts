@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Criteria, Evidence, Fact, Home, ResearchScope, SourceEntry, SourceRun, UtilityName } from '../../src/domain/schema.js';
 import { SOURCE_REGISTRY, type RegisteredSource } from './registry.js';
@@ -26,7 +26,8 @@ export type CollectedSources = {
 
 function parserFor(source: RegisteredSource, criteria?: Criteria): ((capture: Parameters<typeof parseCmu>[0]) => ParseResult) | null {
   if (source.adapter === 'cmu') {
-    const options: CmuParseOptions = criteria ? { destination: criteria.destination.coordinate, bedrooms: criteria.bedrooms, minBathrooms: criteria.minBathrooms, matchingLimit: 12, nearMissLimit: 8 } : {};
+    const maxWholeRentCents = criteria ? Math.floor(criteria.personalRentCap * (criteria.allocation.kind === 'equal' ? criteria.allocation.occupants : 10000 / criteria.allocation.personalShareBps!)) : undefined;
+    const options: CmuParseOptions = criteria ? { destination: criteria.destination.coordinate, bedrooms: criteria.bedrooms, minBathrooms: criteria.minBathrooms, maxWholeRentCents, matchingLimit: 12, nearMissLimit: 8 } : {};
     return (capture) => parseCmu(capture, options);
   }
   if (source.adapter === 'lobos') return parseLobos;
@@ -48,7 +49,7 @@ function canonicalDerived<T>(observed: { value: T | null; evidenceIds: string[] 
 
 function canonicalAmenityKey(label: string): string {
   const value = label.toLowerCase();
-  if (/washer\s*(?:&|and)\s*dryer|in[- ]unit laundry|laundry hookup/.test(value)) return 'laundry_in_unit';
+  if (/washer\s*(?:&|and)\s*dryer|in[- ]unit laundry/.test(value)) return 'laundry_in_unit';
   if (/laundry\s*(?:room|on[- ]site)|on[- ]site laundry/.test(value)) return 'laundry_on_site';
   if (/parking|garage/.test(value)) return 'parking';
   if (/pets?\s*allowed|cat friendly|dog friendly|pet friendly/.test(value)) return 'pets_allowed';
@@ -137,11 +138,17 @@ export async function collectSources(criteria: Criteria, onProgress: (message: s
   const observations = [...unique.values()]; const canonicalEvidence = evidence.filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index) as Evidence[];
   const canonicalHomes = observations.map((observation) => toHome(observation, canonicalEvidence));
   const sourceRuns = runs.map((run) => ({ ...run, status: run.status === 'fetched' ? 'imported' as const : run.status, importedHomeIds: run.status === 'fetched' ? observations.filter((observation) => observation.sourceId === run.sourceId).map((observation) => observation.id) : [] }));
-  const researchScopes: ResearchScope[] = [{ marketKey: `${criteria.market.label.toLowerCase().split('/')[0].trim()}|${criteria.market.region.toLowerCase()}|${criteria.market.country}`, areas: [{ label: criteria.market.label, center: null, radiusMeters: null }], destinationVersion: criteria.destination.version, scenarioMaxWalkSeconds: criteria.maxWalkSeconds, queriedBedrooms: null, queriedMinBathrooms: null, queriedMaxWholeRent: null, queriedPropertyTypes: null, checkedAt: new Date().toISOString(), queryCount: selected.length, limitReasons: ['public pages were fetched without source-side criteria filters', 'source terms/access limits', 'bounded page size/time'] }];
+  const researchScopes: ResearchScope[] = [{ marketKey: `${criteria.market.label.toLowerCase().split('/')[0].trim()}|${criteria.market.region.toLowerCase()}|${criteria.market.country}`, areas: [{ label: criteria.market.label, center: criteria.destination.coordinate, radiusMeters: 5000 }], destinationVersion: criteria.destination.version, scenarioMaxWalkSeconds: criteria.maxWalkSeconds, queriedBedrooms: [criteria.bedrooms], queriedMinBathrooms: null, queriedMaxWholeRent: null, queriedPropertyTypes: null, checkedAt: new Date().toISOString(), queryCount: selected.length, limitReasons: ['CMU floorplans were sampled by requested bedrooms within 5 km, with limited bath and price alternatives; manager cards are bounded leads', 'public source pages and selected records are incomplete market coverage', 'source terms/access limits', 'bounded page size/time'] }];
   const sources: SourceEntry[] = SOURCE_REGISTRY.map(({ adapter: _adapter, ...source }) => source);
   const scopedRuns: SourceRun[] = sourceRuns.map((run) => ({ ...run, scope: researchScopes[0] }));
   const collectedAt = new Date().toISOString();
-  await writeFile(observationPath, JSON.stringify({ schemaVersion: 1, collectedAt, criteria: { market: criteria?.market ?? 'pittsburgh' }, homes: canonicalHomes, observations, evidence: canonicalEvidence, sources, sourceRuns: scopedRuns, researchScopes, captures, warnings }, null, 2), 'utf8');
+  // A failed refresh must not erase the portable, last successful source capture.
+  // Publish the file atomically, just like the served research snapshot.
+  if (canonicalHomes.length) {
+    const temporaryPath = `${observationPath}.${process.pid}.tmp`;
+    await writeFile(temporaryPath, JSON.stringify({ schemaVersion: 1, collectedAt, criteria: { market: criteria.market }, homes: canonicalHomes, observations, evidence: canonicalEvidence, sources, sourceRuns: scopedRuns, researchScopes, captures, warnings }, null, 2), 'utf8');
+    await rename(temporaryPath, observationPath);
+  }
   onProgress(`Collected ${unique.size} unique source observations across ${runs.filter((run) => run.pagesFetched > 0).length} public organizations`);
   return { homes: canonicalHomes, observations, evidence: canonicalEvidence, sources, sourceRuns: scopedRuns, researchScopes, captures, warnings };
 }
