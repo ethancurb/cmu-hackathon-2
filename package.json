@@ -21,6 +21,7 @@
     "cheerio": "^1.2.0",
     "csv-parse": "^7.0.2",
     "express": "^5.2.1",
+    "express-openid-connect": "^3.4.0",
     "fflate": "^0.8.3",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.45.0",

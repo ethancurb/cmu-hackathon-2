@@ -4,6 +4,8 @@ import type { Criteria, CriteriaPatch, Destination, EvaluatedHome, Home, SearchR
 import { CriteriaSchema, validateSnapshot } from './domain/schema.js';
 import { applyCriteriaPatch, evaluateSearch } from './domain/engine.js';
 import { api, type Bootstrap, type Job } from './lib/api.js';
+import { getSession, type SessionState } from './lib/auth.js';
+import { clearStored, readStored, writeStored, type SavedHomeLabel, type Stored } from './lib/storage.js';
 import { dateTime, dollars, fitLabel, title } from './lib/view.js';
 import { presentation } from './config/presentation.js';
 import { CriteriaBar } from './components/CriteriaBar.js';
@@ -14,13 +16,10 @@ import { HomeDetail } from './components/HomeDetail.js';
 import { MapPanel } from './components/MapPanel.js';
 import { CompareSheet } from './components/CompareSheet.js';
 import { ShortlistRail } from './components/ShortlistRail.js';
-
-type SavedHomeLabel = { title: string; url: string };
-type Stored = { criteria?: Criteria; baseline?: Criteria; selectedHomeId?: string | null; compareIds?: string[]; shortlistIds?: string[]; shortlistMeta?: Record<string, SavedHomeLabel>; snapshotId?: string };
-const STORAGE_KEY = 'address-search-v1';
-const readStored = (): Stored => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') as Stored; } catch { return {}; } };
+import { AccountMenu } from './components/AccountMenu.js';
 const id = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 const marketKey = (market: Criteria['market']) => `${market.label.split('/')[0].trim()}|${market.region}|${market.country}`.toLowerCase();
+const browserStorage = (): Storage | null => { try { return window.localStorage; } catch { return null; } };
 
 export default function App() {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
@@ -49,6 +48,10 @@ export default function App() {
   const [importUrl, setImportUrl] = useState('');
   const [importText, setImportText] = useState('');
   const [importSource, setImportSource] = useState('');
+  const [session, setSession] = useState<SessionState | null>(null);
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [accountChecking, setAccountChecking] = useState(true);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
   const requestRef = useRef('');
   const snapshotRef = useRef('');
   const destinationRef = useRef('');
@@ -57,32 +60,117 @@ export default function App() {
   const listScrollRef = useRef(0);
   const resultMapRef = useRef(new Map<string, EvaluatedHome>());
   const jobContextRef = useRef<{ id: string; destinationVersion: string } | null>(null);
+  const accountRequestRef = useRef(0);
+  const accountAbortRef = useRef<AbortController | null>(null);
+  const workspaceIdentityRef = useRef<string | null | undefined>(undefined);
+  const restoredStateRef = useRef<string | null>(null);
+  const callbackErrorNoticeRef = useRef(false);
   
   useEffect(() => {
     let active = true;
     api.bootstrap().then(data => {
       if (!active) return;
       const valid = validateSnapshot(data.snapshot);
-      const saved = readStored();
       setBootstrap(data);
       setSnapshot(valid);
       snapshotRef.current = valid.id;
-      const current = CriteriaSchema.safeParse(saved.criteria).success ? CriteriaSchema.parse(saved.criteria) : data.seed;
-      setCriteria(current);
-      setBaseline(CriteriaSchema.safeParse(saved.baseline).success ? CriteriaSchema.parse(saved.baseline) : data.seed);
-      destinationRef.current = current.destination.version;
-      setSelectedHomeId(saved.selectedHomeId || null);
-      setCompareIds((saved.compareIds || []).slice(0,3));
-      setShortlistIds(saved.shortlistIds || []);
-      if (saved.shortlistMeta && typeof saved.shortlistMeta === 'object') setShortlistMeta(Object.fromEntries(Object.entries(saved.shortlistMeta).filter((entry): entry is [string, SavedHomeLabel] => typeof entry[1]?.title === 'string' && typeof entry[1]?.url === 'string')));
     }).catch(e => { if (active) setError(`Could not load the saved housing research: ${e instanceof Error ? e.message : String(e)}`); });
     return () => { active = false; };
   }, []);
 
+  const refreshAccount = () => {
+    const request = ++accountRequestRef.current;
+    accountAbortRef.current?.abort();
+    const controller = new AbortController();
+    accountAbortRef.current = controller;
+    setWorkspaceReady(false);
+    setAccountChecking(true);
+    setAccountError(null);
+    void getSession(controller.signal).then(next => {
+      if (accountRequestRef.current !== request) return;
+      setSession(next);
+      setAccountChecking(false);
+    }).catch(cause => {
+      if (controller.signal.aborted) return;
+      if (accountRequestRef.current !== request) return;
+      setAccountError(cause instanceof Error ? cause.message : 'Account check failed.');
+      setAccountChecking(false);
+    });
+  };
+
   useEffect(() => {
-    if (!criteria || !snapshot) return;
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ criteria, baseline: baseline ?? undefined, selectedHomeId, compareIds, shortlistIds, shortlistMeta, snapshotId: snapshot.id } satisfies Stored)); } catch { /* private browsing */ }
-  }, [criteria, baseline, selectedHomeId, compareIds, shortlistIds, shortlistMeta, snapshot]);
+    refreshAccount();
+    const recheck = () => { if (!document.hidden) refreshAccount(); };
+    window.addEventListener('focus', recheck);
+    document.addEventListener('visibilitychange', recheck);
+    return () => { accountRequestRef.current += 1; accountAbortRef.current?.abort(); window.removeEventListener('focus', recheck); document.removeEventListener('visibilitychange', recheck); };
+  }, []);
+
+  useEffect(() => {
+    if (!bootstrap || !snapshot || accountChecking || (session === null && !accountError)) return;
+    // A failed recheck is not an identity change. Preserve an already-restored
+    // workspace for reading, while the persistence effect remains disabled.
+    if (accountError && criteria) {
+      setWorkspaceReady(false);
+      return;
+    }
+    const sub = session?.status === 'authenticated' ? session.user.sub : null;
+    const canRestore = session !== null;
+    const restoreKey = accountError ? 'account-error' : session?.status === 'authenticated' ? `account:${sub}` : `guest:${session?.status}`;
+    if (restoredStateRef.current === restoreKey) {
+      if (canRestore) setWorkspaceReady(true);
+      return;
+    }
+    restoredStateRef.current = restoreKey;
+    const storage = browserStorage();
+    const saved = canRestore && storage ? readStored(storage, sub) : {};
+    // Clear every account-scoped view before loading another identity. This also
+    // prevents a stale focus response from writing into the next workspace.
+    setWorkspaceReady(false);
+    setServerResult(null);
+    requestRef.current = '';
+    setJob(null);
+    jobContextRef.current = null;
+    setSelectedHomeId(null);
+    setHoveredId(null);
+    setCompareIds([]);
+    setShortlistIds([]);
+    setShortlistMeta({});
+    setDestinationOpen(false);
+    setDestinationCandidates([]);
+    setPinMode(false);
+    setCompareOpen(false);
+    setImportOpen(false);
+    setImportUrl('');
+    setImportText('');
+    setImportSource('');
+    const current = CriteriaSchema.safeParse(saved.criteria).success ? CriteriaSchema.parse(saved.criteria) : bootstrap.seed;
+    setCriteria(current);
+    setBaseline(CriteriaSchema.safeParse(saved.baseline).success ? CriteriaSchema.parse(saved.baseline) : bootstrap.seed);
+    destinationRef.current = current.destination.version;
+    setSelectedHomeId(saved.selectedHomeId || null);
+    setCompareIds((saved.compareIds || []).slice(0, 3));
+    setShortlistIds(saved.shortlistIds || []);
+    setShortlistMeta(saved.shortlistMeta || {});
+    workspaceIdentityRef.current = canRestore ? sub : undefined;
+    setWorkspaceReady(canRestore);
+  }, [bootstrap, snapshot, session, accountError, accountChecking, criteria]);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('auth') !== 'error') return;
+    callbackErrorNoticeRef.current = true;
+    setNotice('Sign-in could not be completed. You can continue with the housing demo or try again.');
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+  }, []);
+
+  useEffect(() => {
+    if (!criteria || !snapshot || !workspaceReady || session === null || accountError || accountChecking) return;
+    const storage = browserStorage();
+    if (!storage) return;
+    const sub = session.status === 'authenticated' ? session.user.sub : null;
+    if (workspaceIdentityRef.current !== sub) return;
+    writeStored(storage, sub, { criteria, baseline: baseline ?? undefined, selectedHomeId, compareIds, shortlistIds, shortlistMeta, snapshotId: snapshot.id } satisfies Stored);
+  }, [criteria, baseline, selectedHomeId, compareIds, shortlistIds, shortlistMeta, snapshot, workspaceReady, session, accountError, accountChecking]);
 
   const currentMarketHasResearch = Boolean(snapshot && criteria && marketKey(snapshot.discoveryMarket) === marketKey(criteria.market));
   const result = useMemo(() => snapshot && criteria && currentMarketHasResearch ? evaluateSearch(snapshot, criteria, 'client-preview') : null, [snapshot, criteria, currentMarketHasResearch]);
@@ -165,7 +253,7 @@ export default function App() {
   }, [selectedHomeId]);
 
   useEffect(() => { if (!notice) return; const timeout = window.setTimeout(() => setNotice(''), 4500); return () => window.clearTimeout(timeout); }, [notice]);
-  useEffect(() => { setNotice(''); }, [selectedHomeId, compareOpen]);
+  useEffect(() => { if (!callbackErrorNoticeRef.current) setNotice(''); }, [selectedHomeId, compareOpen]);
 
   const patch = (change: CriteriaPatch) => {
     if (!criteria) return;
@@ -217,15 +305,15 @@ export default function App() {
   const toggleShortlist = (homeId: string) => { const home = homeMap.get(homeId); if (home) setShortlistMeta(meta => ({ ...meta, [homeId]: { title: title(home), url: home.primaryUrl } })); setShortlistIds(ids => ids.includes(homeId) ? ids.filter(x => x !== homeId) : [...ids, homeId]); };
   const toggleCompare = (homeId: string) => setCompareIds(ids => ids.includes(homeId) ? ids.filter(x => x !== homeId) : ids.length < 3 ? [...ids, homeId] : (setNotice('Comparison holds up to three homes. Remove one before adding another.'), ids));
   const runImport = async () => { if (!criteria || !snapshot) return; try { const started = (await api.import(importSource, importUrl, importText, criteria, snapshot.id)).job; jobContextRef.current = { id: started.id, destinationVersion: criteria.destination.version }; setJob(started); setImportOpen(false); setNotice('Checking the supplied listing against source evidence.'); } catch (e) { setNotice(`Import could not start: ${e instanceof Error ? e.message : String(e)}`); } };
-  const resetDemo = () => { try { localStorage.removeItem(STORAGE_KEY); } catch { /* private browsing */ } destinationRef.current = bootstrap?.seed.destination.version || ''; pinMarketRef.current = null; jobContextRef.current = null; setJob(null); setCriteria(bootstrap?.seed || null); setBaseline(bootstrap?.seed || null); setSelectedHomeId(null); setCompareIds([]); setShortlistIds([]); setShortlistMeta({}); setServerResult(null); setNotice('Saved demo search restored.'); };
+  const resetDemo = () => { const sub = session?.status === 'authenticated' ? session.user.sub : null; const storage = browserStorage(); if (workspaceReady && session && !accountError && storage) clearStored(storage, sub); destinationRef.current = bootstrap?.seed.destination.version || ''; pinMarketRef.current = null; jobContextRef.current = null; setJob(null); setCriteria(bootstrap?.seed || null); setBaseline(bootstrap?.seed || null); setSelectedHomeId(null); setCompareIds([]); setShortlistIds([]); setShortlistMeta({}); setServerResult(null); setNotice(workspaceReady ? 'Saved demo search restored.' : 'Demo search restored. Account storage is unavailable until the account check succeeds.'); };
 
   if (error) return <div className="boot-state"><div className="wordmark">{presentation.wordmark}<span>.</span></div><h1>Research is temporarily unavailable.</h1><p>{error}</p><button className="plain-button" onClick={() => location.reload()}>Try again</button></div>;
   if (!bootstrap || !snapshot || !criteria || !baseline) return <div className="boot-state"><div className="wordmark">{presentation.wordmark}<span>.</span></div><h1>Opening saved housing research…</h1><p>Loading the sourced snapshot and its search criteria.</p></div>;
 
   return <div className="app-shell" style={{ '--list-percent': `${presentation.listPercent}%`, '--map-percent': `${presentation.mapPercent}%` } as React.CSSProperties}>
-    <header className="app-header"><div className="brand-block"><div className="wordmark">{presentation.wordmark}<span>.</span></div><span className="brand-divider"/><button className="brand-tagline mono" onClick={openDestination} aria-label={`Change research city from ${criteria.market.label}, ${criteria.market.region}`}>{criteria.market.label}, {criteria.market.region} / housing research</button></div><div className="header-actions"><span className="snapshot-label mono">RESEARCH SAVED {dateTime(snapshot.createdAt)}</span><button className="reset-button" onClick={resetDemo}>Reset demo</button><button className="plain-button find-button" onClick={startDiscovery} disabled={!bootstrap.capabilities.discovery || Boolean(job && ['queued','running'].includes(job.status))}><Plus size={16}/> Find more homes</button><div className="workspace-mode"><button className={`mode-button ${!mapView ? 'active' : ''}`} onClick={() => setMapView(false)}><List size={16}/> List</button><button className={`mode-button ${mapView ? 'active' : ''}`} onClick={() => setMapView(true)}><MapIcon size={16}/> Map</button></div></div></header>
+    <header className="app-header"><div className="brand-block"><div className="wordmark">{presentation.wordmark}<span>.</span></div><span className="brand-divider"/><button className="brand-tagline mono" onClick={openDestination} aria-label={`Change research city from ${criteria.market.label}, ${criteria.market.region}`}>{criteria.market.label}, {criteria.market.region} / housing research</button></div><div className="header-actions"><span className="snapshot-label mono">RESEARCH SAVED {dateTime(snapshot.createdAt)}</span><AccountMenu session={session} error={accountError} onRetry={refreshAccount}/><button className="reset-button" onClick={resetDemo}>Reset demo</button><button className="plain-button find-button" onClick={startDiscovery} disabled={!bootstrap.capabilities.discovery || Boolean(job && ['queued','running'].includes(job.status))}><Plus size={16}/> Find more homes</button><div className="workspace-mode"><button className={`mode-button ${!mapView ? 'active' : ''}`} onClick={() => setMapView(false)}><List size={16}/> List</button><button className={`mode-button ${mapView ? 'active' : ''}`} onClick={() => setMapView(true)}><MapIcon size={16}/> Map</button></div></div></header>
     <CriteriaBar criteria={criteria} baseline={baseline} onPatch={patch} onRevert={() => { setCriteria(baseline); destinationRef.current = baseline.destination.version; setNotice('Original requirements restored.'); }} onDestinationEdit={openDestination}/>
-    {notice && <div className="notice-bar" role="status"><span>{notice}</span><button className="icon-button" onClick={() => setNotice('')} aria-label="Dismiss message"><X size={15}/></button></div>}
+    {notice && <div className="notice-bar" role="status"><span>{notice}</span><button className="icon-button" onClick={() => { callbackErrorNoticeRef.current = false; setNotice(''); }} aria-label="Dismiss message"><X size={15}/></button></div>}
     {job && ['queued','running'].includes(job.status) && <div className="job-bar" role="status"><span className="pulse-dot"/><strong>{job.type === 'discovery' ? 'Researching sources' : 'Computing walking routes'}</strong><span>{job.progress.message}</span>{job.progress.total != null && <span className="mono">{job.progress.completed}/{job.progress.total}</span>}</div>}
     {activeResult && <CoveragePanel snapshot={snapshot} result={activeResult} onRefresh={startDiscovery} busy={Boolean(job && ['queued','running'].includes(job.status))} capabilities={bootstrap.capabilities.discovery}/>}
     <main className={`workspace ${mapView ? 'mobile-map-view' : ''}`}>
