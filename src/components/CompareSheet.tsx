@@ -1,6 +1,6 @@
 import { ArrowUpRight, X } from 'lucide-react';
 import type { Criteria, EvaluatedHome, Home, Snapshot } from '../domain/schema.js';
-import { dollars, homeRoute, layout, minute, title, utilities, utilityFor, utilityState, wholeRentLabel } from '../lib/view.js';
+import { destinationName, dollars, homeRoute, layout, minute, title, utilities, utilityFor, utilityState, wholeRentLabel } from '../lib/view.js';
 
 type Item = { home: Home; result: EvaluatedHome | undefined };
 type Props = { items: Item[]; snapshot: Snapshot; criteria: Criteria; onClose: () => void; onRemove: (id: string) => void };
@@ -12,7 +12,7 @@ export function CompareSheet({ items, snapshot, criteria, onClose, onRemove }: P
     { label: 'Known monthly costs', value: ({ result }) => result ? <>{dollars(result.cost.knownPersonalRecurring)} <small>{result.cost.unknownItems.length} unresolved cost items</small></> : 'Unknown' },
     { label: 'Layout', value: ({ home }) => layout(home) },
     ...utilities.map(u => ({ label: u.label, value: ({ home }: Item) => utilityState(utilityFor(home,u.key)) })),
-    { label: `Walk to ${criteria.destination.label}`, value: ({ result }) => { const route = result && homeRoute(snapshot,result); return route?.status === 'ok' ? <>{minute(route.durationSeconds)} <small>{route.provider} · computed foot route</small></> : 'Unverified'; } },
+    { label: `Walk to ${destinationName(criteria)}`, value: ({ result }) => { const route = result && homeRoute(snapshot,result); return route?.status === 'ok' ? <>{minute(route.durationSeconds)} <small>{route.provider} · computed foot route</small></> : 'Unverified'; } },
     { label: 'Transit', value: ({ home }) => home.transit.length ? home.transit.slice(0,2).map(t => `Route ${t.routeShortName} · ${t.servesDestination ? 'serves destination' : 'nearby stop only'}`).join('; ') : 'No recorded context' },
     { label: 'Errands', value: ({ home }) => home.nearby.length ? home.nearby.slice(0,3).map(n => `${n.name} (${Math.round(n.distanceMeters)} m ${n.distanceBasis.replaceAll('_',' ')})`).join('; ') : 'No recorded context' },
     { label: 'Features', value: ({ home }) => home.amenities.length ? home.amenities.filter(a => a.fact.value === true).map(a => a.label).join('; ') || 'None confirmed' : 'No recorded context' },

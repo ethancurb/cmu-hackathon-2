@@ -1,6 +1,6 @@
 import { ArrowUpRight, Bookmark, GitCompareArrows } from 'lucide-react';
 import type { Criteria, EvaluatedHome, Home, Snapshot } from '../domain/schema.js';
-import { constraintSummary, dollars, fitLabel, homeRoute, layout, minute, shortDate, title, utilities, utilityFor, utilityState, wholeRentLabel } from '../lib/view.js';
+import { constraintSummary, destinationName, dollars, fitLabel, homeRoute, layout, minute, shortDate, title, utilities, utilityFor, utilityState, wholeRentLabel } from '../lib/view.js';
 
 type Props = { snapshot: Snapshot; criteria: Criteria; home: Home; result: EvaluatedHome; number: number; selected: boolean; saved: boolean; comparing: boolean; onSelect: () => void; onSave: () => void; onCompare: () => void; onHover: (hovered: boolean) => void };
 
@@ -23,7 +23,7 @@ export function HomeRow({ snapshot, criteria, home, result, number, selected, sa
       </span>
       <span className="row-walk">
         <strong className={route?.status === 'ok' ? 'route-color' : ''}>{route?.status === 'ok' ? minute(route.durationSeconds) : 'Unknown'}</strong>
-        <span>walk to {criteria.destination.label}</span>
+        <span>walk to {destinationName(criteria)}</span>
       </span>
     </button>
     <div className="row-evidence">

@@ -24,6 +24,7 @@ export const api = {
   discovery: (criteria: Criteria) => json<{ job: Job }>('/api/discovery', { method: 'POST', body: JSON.stringify({ criteria }) }),
   routes: (snapshotId: string, destination: Destination, homeIds: string[]) => json<{ job: Job }>('/api/routes', { method: 'POST', body: JSON.stringify({ snapshotId, destination, homeIds }) }),
   destination: (query: string, market: Criteria['market']) => json<{ candidates: Destination[] }>('/api/destination', { method: 'POST', body: JSON.stringify({ query, market }) }),
+  pinDestination: (label: string, coordinate: Destination['coordinate']) => json<{ candidates: Destination[] }>('/api/destination', { method: 'POST', body: JSON.stringify({ label, coordinate }) }),
   job: (id: string) => json<{ job: Job }>(`/api/jobs/${encodeURIComponent(id)}`),
   import: (sourceId: string, url: string, text: string) => json<{ job: Job }>('/api/import', { method: 'POST', body: JSON.stringify({ sourceId, url, text }) }),
 };

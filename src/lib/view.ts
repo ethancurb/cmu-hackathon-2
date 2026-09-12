@@ -14,6 +14,7 @@ export const minute = (seconds: number | null | undefined) => seconds == null ? 
 export const dateTime = (iso: string | null | undefined) => iso ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York', timeZoneName: 'short' }).format(new Date(iso)) : 'Not recorded';
 export const shortDate = (iso: string | null | undefined) => iso ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }).format(new Date(iso)) : 'Date unknown';
 export const title = (home: Home) => home.address.value || home.title.value || 'Address not stated';
+export const destinationName = (criteria: Criteria) => criteria.destination.label.split(' — ')[0];
 export const layout = (home: Home) => `${home.bedrooms.value ?? '?'} bed${home.bedrooms.value === 1 ? '' : 's'} · ${home.bathrooms.value ?? '?'} bath${home.bathrooms.value === 1 ? '' : 's'}`;
 export const wholeRentLabel = (home: Home) => {
   const quote = home.rent;

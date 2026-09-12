@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Compass, GitCompareArrows, List, Map as MapIcon, Plus, Search, X } from 'lucide-react';
 import type { Criteria, CriteriaPatch, Destination, EvaluatedHome, Home, SearchResult, Snapshot } from './domain/schema.js';
-import { validateSnapshot } from './domain/schema.js';
+import { CriteriaSchema, validateSnapshot } from './domain/schema.js';
 import { applyCriteriaPatch, evaluateSearch } from './domain/engine.js';
 import { api, type Bootstrap, type Job } from './lib/api.js';
 import { dateTime, dollars, fitLabel, title } from './lib/view.js';
@@ -51,6 +51,7 @@ export default function App() {
   const listRef = useRef<HTMLDivElement>(null);
   const listScrollRef = useRef(0);
   const resultMapRef = useRef(new Map<string, EvaluatedHome>());
+  const jobContextRef = useRef<{ id: string; destinationVersion: string } | null>(null);
   
   useEffect(() => {
     let active = true;
@@ -61,9 +62,9 @@ export default function App() {
       setBootstrap(data);
       setSnapshot(valid);
       snapshotRef.current = valid.id;
-      const current = saved.criteria && saved.criteria.market.country === 'US' ? saved.criteria : data.seed;
+      const current = CriteriaSchema.safeParse(saved.criteria).success ? CriteriaSchema.parse(saved.criteria) : data.seed;
       setCriteria(current);
-      setBaseline(saved.baseline || data.seed);
+      setBaseline(CriteriaSchema.safeParse(saved.baseline).success ? CriteriaSchema.parse(saved.baseline) : data.seed);
       destinationRef.current = current.destination.version;
       setSelectedHomeId(saved.selectedHomeId || null);
       setCompareIds((saved.compareIds || []).slice(0,3));
@@ -115,26 +116,36 @@ export default function App() {
   useEffect(() => {
     if (!job || ['succeeded','partial','failed','cancelled'].includes(job.status)) return;
     let cancelled = false;
-    const timer = setTimeout(async () => {
-      if (document.hidden) return;
+    let polling = false;
+    const poll = async () => {
+      if (cancelled || polling || document.hidden) return;
+      if (Date.now() - Date.parse(job.createdAt) > 7.5 * 60_000) { setNotice('This job has not reported a result within its time limit. The saved list remains available.'); setJob(null); return; }
+      polling = true;
       try {
         const updated = (await api.job(job.id)).job;
         if (cancelled) return;
-        setJob(updated);
         if (['succeeded','partial'].includes(updated.status) && updated.snapshotId) {
+          if (job.type === 'routes' && jobContextRef.current?.id === job.id && jobContextRef.current.destinationVersion !== destinationRef.current) { setNotice('A route job finished for an earlier destination; the current search remains unchanged.'); setJob(updated); return; }
           const next = validateSnapshot((await api.snapshot(updated.snapshotId)).snapshot);
           if (cancelled) return;
-          if (job.type === 'routes' && next.routes.some(r => r.destinationVersion !== destinationRef.current) && !next.routes.some(r => r.destinationVersion === destinationRef.current)) { setNotice('A route job finished for an earlier destination; the current search remains unchanged.'); return; }
           const previous = snapshotRef.current;
           snapshotRef.current = next.id;
           setSnapshot(next);
           setServerResult(null);
           setNotice(`${job.type === 'discovery' ? 'Research' : 'Routes'} updated. Snapshot ${next.id}${previous === next.id ? '' : ' replaced the previous view'}.`);
-        } else if (updated.status === 'failed' || updated.status === 'cancelled') setNotice(`${job.type === 'discovery' ? 'Research' : 'Routing'} ${updated.status}: ${updated.error?.message || 'The saved snapshot remains available.'}`);
-      } catch (e) { if (!cancelled) setNotice(`Update check failed: ${e instanceof Error ? e.message : String(e)}. The current list remains available.`); }
-    }, 1000);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [job]);
+          setJob(updated);
+        } else {
+          if (updated.status === 'failed' || updated.status === 'cancelled') setNotice(`${job.type === 'discovery' ? 'Research' : 'Routing'} ${updated.status}: ${updated.error?.message || 'The saved snapshot remains available.'}`);
+          setJob(updated);
+        }
+      } catch (e) { if (!cancelled) setNotice(`Update check failed: ${e instanceof Error ? e.message : String(e)}. Retrying while this job is active; the current list remains available.`); }
+      finally { polling = false; }
+    };
+    const timer = window.setInterval(() => { void poll(); }, 1000);
+    const onVisible = () => { if (!document.hidden) void poll(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { cancelled = true; window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
+  }, [job?.id, job?.status]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -150,7 +161,7 @@ export default function App() {
   };
   const startDiscovery = async () => {
     if (!criteria) return;
-    try { setNotice('Searching supported sources. You can keep using this snapshot.'); setJob((await api.discovery(criteria)).job); } catch (e) { setNotice(`Research could not start: ${e instanceof Error ? e.message : String(e)}`); }
+    try { setNotice('Searching supported sources. You can keep using this snapshot.'); const started = (await api.discovery(criteria)).job; jobContextRef.current = { id: started.id, destinationVersion: criteria.destination.version }; setJob(started); } catch (e) { setNotice(`Research could not start: ${e instanceof Error ? e.message : String(e)}`); }
   };
   const updateDestination = async (destination: Destination, market?: Criteria['market']) => {
     if (!criteria || !snapshot) return;
@@ -161,7 +172,7 @@ export default function App() {
     setDestinationOpen(false);
     setPinMode(false);
     setNotice(`Destination changed to ${destination.label}. Old walking routes cannot confirm this search.`);
-    try { setJob((await api.routes(snapshot.id, destination, snapshot.homes.map(h => h.id))).job); } catch (e) { setNotice(`Destination changed. Route update unavailable: ${e instanceof Error ? e.message : String(e)}`); }
+    try { const started = (await api.routes(snapshot.id, destination, snapshot.homes.map(h => h.id))).job; jobContextRef.current = { id: started.id, destinationVersion: destination.version }; setJob(started); } catch (e) { setNotice(`Destination changed. Route update unavailable: ${e instanceof Error ? e.message : String(e)}`); }
   };
   const geocodeDestination = async () => {
     if (!criteria || !destinationQuery.trim()) return;
@@ -170,9 +181,14 @@ export default function App() {
     try { const response = await api.destination(destinationQuery.trim(), criteria.market); setDestinationCandidates(response.candidates); if (!response.candidates.length) setNotice('No mapped destination found. Choose a point on the map instead.'); } catch (e) { setNotice(`Destination lookup failed: ${e instanceof Error ? e.message : String(e)}. You can choose a map point.`); }
     finally { setDestinationBusy(false); }
   };
-  const pinDestination = (lat: number, lon: number) => {
+  const pinDestination = async (lat: number, lon: number) => {
     if (!criteria) return;
-    void updateDestination({ ...criteria.destination, id: `custom:${id()}`, version: id(), label: destinationQuery.trim() || 'Chosen map point', coordinate: { lat, lon }, evidenceIds: [], caveat: 'User-selected map point; entrance has not been physically verified.' });
+    try {
+      const response = await api.pinDestination(destinationQuery.trim() || 'Chosen map point', { lat, lon });
+      const candidate = response.candidates[0];
+      if (!candidate) throw new Error('The map point was not accepted.');
+      await updateDestination(candidate);
+    } catch (e) { setNotice(`Map point could not be set: ${e instanceof Error ? e.message : String(e)}`); }
   };
   const selectHome = (homeId: string) => {
     if (!selectedHomeId) listScrollRef.current = listRef.current?.scrollTop ?? 0;
@@ -183,7 +199,7 @@ export default function App() {
   const backToList = () => { setSelectedHomeId(null); requestAnimationFrame(() => { if (listRef.current) listRef.current.scrollTop = listScrollRef.current; }); };
   const toggleShortlist = (homeId: string) => setShortlistIds(ids => ids.includes(homeId) ? ids.filter(x => x !== homeId) : [...ids, homeId]);
   const toggleCompare = (homeId: string) => setCompareIds(ids => ids.includes(homeId) ? ids.filter(x => x !== homeId) : ids.length < 3 ? [...ids, homeId] : (setNotice('Comparison holds up to three homes. Remove one before adding another.'), ids));
-  const runImport = async () => { try { setJob((await api.import(importSource, importUrl, importText)).job); setImportOpen(false); setNotice('Checking the supplied listing against source evidence.'); } catch (e) { setNotice(`Import could not start: ${e instanceof Error ? e.message : String(e)}`); } };
+  const runImport = async () => { try { const started = (await api.import(importSource, importUrl, importText)).job; jobContextRef.current = { id: started.id, destinationVersion: criteria?.destination.version || '' }; setJob(started); setImportOpen(false); setNotice('Checking the supplied listing against source evidence.'); } catch (e) { setNotice(`Import could not start: ${e instanceof Error ? e.message : String(e)}`); } };
 
   if (error) return <div className="boot-state"><div className="wordmark">address<span>.</span></div><h1>Research is temporarily unavailable.</h1><p>{error}</p><button className="plain-button" onClick={() => location.reload()}>Try again</button></div>;
   if (!bootstrap || !snapshot || !criteria || !baseline) return <div className="boot-state"><div className="wordmark">address<span>.</span></div><h1>Opening saved housing research…</h1><p>Loading the sourced snapshot and its search criteria.</p></div>;
@@ -201,7 +217,8 @@ export default function App() {
           {result?.discoveryNeeded && <div className="discovery-needed"><Compass size={18}/><div><strong>More research needed for this search</strong><p>{result.discoveryReason || 'The current research scope does not cover these requirements.'} Existing records are still shown with their evidence.</p></div><button className="plain-button" onClick={startDiscovery} disabled={!bootstrap.capabilities.discovery}>Search now <ArrowRight size={14}/></button></div>}
           {!currentMarketHasResearch && <div className="market-empty"><span className="eyebrow">New market</span><h2>No saved research for {criteria.market.label}, {criteria.market.region}.</h2><p>The Pittsburgh snapshot cannot represent homes in this city. Search supported sources to build a new inventory.</p><button className="plain-button primary-button" onClick={startDiscovery} disabled={!bootstrap.capabilities.discovery}>Find homes here <ArrowRight size={16}/></button></div>}
           {result && <>
-            <Alternatives alternatives={result.alternatives} criteria={criteria} onApply={patch}/>
+            <div className="desktop-alternatives"><Alternatives alternatives={result.alternatives} criteria={criteria} onApply={patch}/></div>
+            {result.alternatives.length > 0 && <details className="mobile-alternatives"><summary>Explore changes that unlock homes <span>{result.alternatives.length} {result.alternatives.length === 1 ? 'option' : 'options'}</span></summary><Alternatives alternatives={result.alternatives} criteria={criteria} onApply={patch}/></details>}
             <div className="list-title"><div><span className="eyebrow">Homes in this snapshot</span><h2>Browse the evidence <span>{ordered.length}</span></h2></div><div className="sort-control"><label htmlFor="sort">Sort within each group</label><select id="sort" value={criteria.sort} onChange={e => setCriteria({ ...criteria, sort: e.target.value as Criteria['sort'] })}><option value="personal_rent">Your rent share</option><option value="walk">Walk time</option><option value="unresolved_costs">Unresolved costs</option><option value="observed_at">Last observed</option></select></div></div>
             {ordered.length === 0 && <div className="list-empty"><Search size={22}/><h3>No homes recorded in this snapshot.</h3><p>See Coverage for searched sources and limits, or run more discovery. Unknown listing data is never filled in to make a match.</p></div>}
             {(['matches','needs_verification','near_match'] as const).map(fit => { const group = ordered.filter(x => x.result.fit === fit); return group.length > 0 && <section className="home-group" key={fit}><div className="group-heading"><span>{fit === 'matches' ? 'Meets requirements' : fit === 'needs_verification' ? 'Needs verification' : 'Near matches'}</span><span className="mono">{group.length} {group.length === 1 ? 'home' : 'homes'}</span></div>{group.map(({ home, result: item }) => <HomeRow key={home.id} snapshot={snapshot} criteria={criteria} home={home} result={item} number={ordered.findIndex(x => x.home.id === home.id)+1} selected={selectedHomeId === home.id} saved={shortlistIds.includes(home.id)} comparing={compareIds.includes(home.id)} onSelect={() => selectHome(home.id)} onSave={() => toggleShortlist(home.id)} onCompare={() => toggleCompare(home.id)} onHover={hovered => setHoveredId(hovered ? home.id : null)}/>)}</section>; })}

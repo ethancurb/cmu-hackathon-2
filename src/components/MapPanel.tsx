@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import type { Criteria, EvaluatedHome, Home, Snapshot } from '../domain/schema.js';
-import { minute, routeForHome, title } from '../lib/view.js';
+import { destinationName, minute, routeForHome, title } from '../lib/view.js';
 
 type Props = { snapshot: Snapshot; criteria: Criteria; ordered: { home: Home; result: EvaluatedHome }[]; selectedId: string | null; hoveredId: string | null; onSelect: (id: string) => void; onPinDestination: (lat: number, lon: number) => void; pinMode: boolean };
 
@@ -12,6 +12,8 @@ export function MapPanel({ snapshot, criteria, ordered, selectedId, hoveredId, o
   const clickHandler = useRef(onSelect);
   const destinationHandler = useRef(onPinDestination);
   const pinModeRef = useRef(pinMode);
+  const allBounds = useRef<L.LatLngBounds | null>(null);
+  const viewKey = useRef('');
   const [tileError, setTileError] = useState(false);
   clickHandler.current = onSelect;
   destinationHandler.current = onPinDestination;
@@ -54,8 +56,21 @@ export function MapPanel({ snapshot, criteria, ordered, selectedId, hoveredId, o
         L.polyline(route.geometry.coordinates.map(([lon, lat]): [number, number] => [lat, lon]), { color: '#2456a8', weight: 4, opacity: .94 }).addTo(group);
       }
     }
-    if (points.length > 1) instance.fitBounds(L.latLngBounds(points), { padding: [56, 56], maxZoom: 15 });
-    else instance.setView([dest.lat, dest.lon], 14);
+    allBounds.current = points.length > 1 ? L.latLngBounds(points) : null;
+    const nextViewKey = `${criteria.destination.version}|${selectedId ?? ''}|${ordered.map(x => x.home.id).join(',')}`;
+    if (nextViewKey !== viewKey.current) {
+      viewKey.current = nextViewKey;
+      const selected = selectedId && snapshot.homes.find(h => h.id === selectedId)?.coordinate.value;
+      if (selected) instance.fitBounds(L.latLngBounds([[dest.lat,dest.lon],[selected.lat,selected.lon]]), { padding: [72, 72], maxZoom: 15 });
+      else {
+        const campusPoints = points.filter(point => {
+          const p = L.latLng(point);
+          return Math.hypot((p.lat - dest.lat) * 111_000, (p.lng - dest.lon) * 85_000) < 4500;
+        });
+        if (campusPoints.length > 1) instance.fitBounds(L.latLngBounds(campusPoints), { padding: [56, 56], maxZoom: 14 });
+        else instance.setView([dest.lat, dest.lon], 14);
+      }
+    }
     requestAnimationFrame(() => instance.invalidateSize());
   }, [snapshot, criteria, ordered, selectedId, hoveredId]);
 
@@ -66,8 +81,9 @@ export function MapPanel({ snapshot, criteria, ordered, selectedId, hoveredId, o
     {tileError && <div className="basemap-fallback" role="status">Basemap unavailable. Housing and saved route details remain in the list.</div>}
     {pinMode && <div className="map-pin-instruction">Choose a point for the new destination</div>}
     <div className="map-caption">
-      <span className="map-caption-dot" /> <strong>{criteria.destination.label}</strong><span className="muted"> mapped entrance</span>
+      <span className="map-caption-dot" /> <strong>{destinationName(criteria)}</strong><span className="muted"> mapped entrance</span>
       {selected && <div className="map-route-summary">{route?.status === 'ok' ? `${minute(route.durationSeconds)} computed walk · ${route.provider} · ${route.distanceMeters == null ? 'distance unknown' : `${(route.distanceMeters / 1000).toFixed(1)} km`}` : 'Walking route unavailable or needs review'}</div>}
+      <button className="map-show-all" onClick={() => { if (map.current && allBounds.current) map.current.fitBounds(allBounds.current, { padding: [56,56], maxZoom: 15 }); }}>Show all {ordered.length} mapped homes</button>
     </div>
   </section>;
 }
