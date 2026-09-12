@@ -26,5 +26,5 @@ export const api = {
   destination: (query: string, market: Criteria['market']) => json<{ candidates: Destination[] }>('/api/destination', { method: 'POST', body: JSON.stringify({ query, market }) }),
   pinDestination: (label: string, coordinate: Destination['coordinate']) => json<{ candidates: Destination[] }>('/api/destination', { method: 'POST', body: JSON.stringify({ label, coordinate }) }),
   job: (id: string) => json<{ job: Job }>(`/api/jobs/${encodeURIComponent(id)}`),
-  import: (sourceId: string, url: string, text: string) => json<{ job: Job }>('/api/import', { method: 'POST', body: JSON.stringify({ sourceId, url, text }) }),
+  import: (sourceId: string, url: string, text: string, criteria: Criteria, snapshotId: string) => json<{ job: Job }>('/api/import', { method: 'POST', body: JSON.stringify({ sourceId, url, text: text.trim() || undefined, criteria, snapshotId }) }),
 };

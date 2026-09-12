@@ -13,7 +13,10 @@ export const dollars = (cents: number | null | undefined) => cents == null ? 'No
 export const minute = (seconds: number | null | undefined) => seconds == null ? 'Route unknown' : `${Math.ceil(seconds / 60)} min`;
 export const dateTime = (iso: string | null | undefined) => iso ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York', timeZoneName: 'short' }).format(new Date(iso)) : 'Not recorded';
 export const shortDate = (iso: string | null | undefined) => iso ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }).format(new Date(iso)) : 'Date unknown';
-export const title = (home: Home) => home.address.value || home.title.value || 'Address not stated';
+export const title = (home: Home) => {
+  const raw = home.scope === 'floor_plan' && home.title.value ? home.title.value : home.address.value || home.title.value || 'Address not stated';
+  return raw.replace(/\b[A-Z]{3,}\b/g, word => word[0] + word.slice(1).toLowerCase());
+};
 export const destinationName = (criteria: Criteria) => criteria.destination.label.split(' — ')[0];
 export const layout = (home: Home) => `${home.bedrooms.value ?? '?'} bed${home.bedrooms.value === 1 ? '' : 's'} · ${home.bathrooms.value ?? '?'} bath${home.bathrooms.value === 1 ? '' : 's'}`;
 export const wholeRentLabel = (home: Home) => {
@@ -33,4 +36,15 @@ export const routeForHome = (snapshot: Snapshot, home: Home, criteria: Criteria)
 export const sourceNames = (snapshot: Snapshot, home: Home) => snapshot.evidence.filter(e => home.sourceListingIds.includes(e.scopeKey) || home.primaryUrl === e.url).map(e => snapshot.sources.find(s => s.id === e.sourceId)?.name).filter((x): x is string => Boolean(x));
 export const fitLabel = (result: EvaluatedHome) => result.fit === 'matches' ? 'Meets stated requirements' : result.fit === 'near_match' ? 'Near match' : 'Needs verification';
 export const constraintSummary = (result: EvaluatedHome) => result.constraints.filter(c => c.outcome !== 'pass').map(c => `${c.key.replaceAll('_',' ')} ${c.outcome === 'fail' ? 'outside requirement' : 'unknown'}`).join(' · ');
+export const decisionReason = (result: EvaluatedHome, criteria: Criteria) => {
+  const failures = result.constraints.filter(c => c.outcome === 'fail').map(c => {
+    if (c.key === 'personal_rent' && typeof c.actual === 'number') return `${dollars(c.actual - criteria.personalRentCap)} over share cap`;
+    if (c.key === 'walk' && typeof c.actual === 'number') return `${Math.ceil((c.actual - criteria.maxWalkSeconds) / 60)} min over walk limit`;
+    if (c.key === 'bathrooms') return `${c.actual} baths vs ${criteria.minBathrooms}+ required`;
+    if (c.key === 'bedrooms') return `${c.actual} beds vs ${criteria.bedrooms} required`;
+    return `${c.key.replaceAll('_',' ')} outside requirement`;
+  });
+  const unknown = result.constraints.filter(c => c.outcome === 'unknown').map(c => c.key.replace('personal_rent','rent').replace('property_type','type'));
+  return [...failures, unknown.length ? `${unknown.join(', ')} unknown` : ''].filter(Boolean).join(' · ');
+};
 export const capWhole = (criteria: Criteria) => criteria.allocation.kind === 'equal' ? Math.floor(criteria.personalRentCap * criteria.allocation.occupants) : criteria.allocation.personalShareBps ? Math.floor(criteria.personalRentCap * 10000 / criteria.allocation.personalShareBps) : null;
