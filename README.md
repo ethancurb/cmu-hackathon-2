@@ -1,11 +1,15 @@
 # OneStop — housing research, in one place
 
+**[Open the live OneStop demo →](https://onestop-hackcmu.vercel.app)**
+
+Browse immediately as a guest, or sign in with Auth0 to keep a separate workspace on this browser.
+
 OneStop helps a renter search across fragmented housing sources, compare the
 daily consequences of each home, and see which small compromise unlocks another
 option. The seeded demonstration is a Pittsburgh search around Carnegie Mellon.
 
-Public demo: **https://onestop-hackcmu.vercel.app**. Deployment and server-only
-Grok configuration are documented in [the deployment runbook](docs/deployment.md).
+Deployment and server-only Grok configuration are documented in
+[the deployment runbook](docs/deployment.md).
 
 ## Run the demo
 
@@ -35,10 +39,11 @@ For development, use `npm run dev`; Vite and the API use separate local
 processes, with the API on `http://127.0.0.1:4318`.
 
 Copy `.env.example` to the ignored `.env.local` for optional local configuration.
-`XAI_API_KEY` enables **Ask for anything**, which uses Grok to highlight options
+`XAI_API_KEY` enables **Ask Grok**, which uses Grok to highlight options
 for a specific preference while preserving the original requirements and their
-exact deviations. Never prefix this key with `VITE_` or commit it. Auth0 account
-code is integrated but requires a configured tenant; guest research works without it.
+exact deviations. Never prefix this key with `VITE_` or commit it. Grok and Auth0
+are active on the public demo. Local use requires separate environment
+configuration; guest housing research works without either service.
 
 ## Seeded search
 
@@ -61,7 +66,8 @@ mean zero, and a saved observation does not confirm current vacancy.
 
 ## More documentation
 
-- [Verified handoff](docs/verification.md) — actual checks, screenshots, seed counts, and limits.
+- [Latest public handoff](docs/reviews/integration-handoff.md) — deployed revision, Auth0, frontend polish, and verification.
+- [Build verification](docs/verification.md) — original acceptance checks, screenshots, seed counts, and limits.
 - [Runbook](docs/runbook.md) — startup, reset, live research, and recovery.
 - [90-second demo](docs/demo.md) — a repeatable presentation path.
 - [Product brief](PROJECT.md) — purpose, criteria, and evidence rules.
