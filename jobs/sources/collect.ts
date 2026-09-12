@@ -40,7 +40,7 @@ function canonicalUnknown<T>(): Fact<T> { return { value: null, state: 'unknown'
 
 const UTILITY_NAMES: UtilityName[] = ['electricity', 'gas', 'water_sewer', 'trash', 'internet', 'other'];
 
-function toHome(observed: ObservedListing, allEvidence: EvidenceRow[]): Home {
+export function toHome(observed: ObservedListing, allEvidence: EvidenceRow[]): Home {
   const evidence = allEvidence.filter((item) => observed.evidence.some((candidate) => candidate.id === item.id));
   const mapFact = <T>(fact: { value: T | null; state: 'sourced' | 'unknown' | 'conflicting'; evidenceIds: string[] }) => canonicalFact(fact, evidence);
   const utilities = UTILITY_NAMES.map((name) => {
