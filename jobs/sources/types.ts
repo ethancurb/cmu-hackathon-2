@@ -44,12 +44,14 @@ export type ObservedListing = {
     semantics: 'base_rent' | 'effective_rent' | 'advertised_unspecified';
   };
   availability: ObservedFact<string>;
-  utilities: Array<{ name: string; inclusion: 'included' | 'separate' | 'partial' | null; evidenceIds: string[]; terms: string | null }>;
-  amenities: Array<{ label: string; value: boolean | null; evidenceIds: string[] }>;
+  utilities: Array<{ name: string; inclusion: 'included' | 'separate' | 'partial' | null; evidenceIds: string[]; terms: string | null; appliesToAllUnits?: boolean }>;
+  amenities: Array<{ label: string; value: boolean | null; evidenceIds: string[]; scope?: 'unit' | 'building'; applicability?: 'explicit' | 'unknown' }>;
   evidence: EvidenceRow[];
   coordinate?: ObservedFact<{ lat: number; lon: number }>;
   concessions?: ObservedFact<string>;
+  concessionsScope?: 'offer' | 'building';
   leaseTerms?: ObservedFact<string>;
+  leaseTermsScope?: 'offer' | 'building';
   photo?: { url: string; evidenceId: string; alt: string } | null;
 };
 
