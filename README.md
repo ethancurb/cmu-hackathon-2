@@ -52,6 +52,7 @@ mean zero, and a saved observation does not confirm current vacancy.
 
 ## More documentation
 
+- [Verified handoff](docs/verification.md) — actual checks, screenshots, seed counts, and limits.
 - [Runbook](docs/runbook.md) — startup, reset, live research, and recovery.
 - [90-second demo](docs/demo.md) — a repeatable presentation path.
 - [Product brief](PROJECT.md) — purpose, criteria, and evidence rules.

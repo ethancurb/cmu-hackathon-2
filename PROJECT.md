@@ -104,3 +104,5 @@ For every proposed feature or technical choice, ask: How does this help the rent
 ## Current phase
 
 The user authorized the full build and autonomous overnight research, implementation, iteration and Fable/OpenCode Go reviews. The current target is approximately 11 a.m. EDT September 12 (15:00 UTC), give or take, with quality and important work prioritized over an exact cutoff. This supersedes earlier 10 a.m. planning targets. Follow `docs/BUILD-STATUS.md`, the design, contracts and implementation plan. Preserve real source evidence, frontend quality and the complete decision loop.
+
+Implementation handoff: the full application is integrated into `main` and verified. Open `http://127.0.0.1:4173`; see `docs/verification.md` for actual acceptance results, source scope, rendered review evidence and practical limits.

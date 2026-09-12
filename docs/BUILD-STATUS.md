@@ -5,7 +5,7 @@ User target: approximately 11 a.m. EDT / 15:00 UTC, give or take. The user expli
 
 Authorization: build the full application, perform overnight public-source research, iterate and self-improve, invoke Fable and OpenCode Go at the coordinator's discretion, and proceed autonomously within the project's scope. No intermediate approval is required for routine implementation, testing, source research or these reviews.
 
-Current (07:55 a.m. EDT): the application is implemented and the final local integration is underway. The audited portable CMU snapshot has 49 offers/leads from three direct housing organizations, 30 placed records, 24 usable foot routes, 30 destination-scoped transit contexts and 21 nearby-context records. The production interface has passed five browser acceptance flows and separate live city, routing, import, discovery, and external-network failure checks. The 89-test integrated suite passed; three additional import regressions passed in isolation and will be included in the final main-workspace run. Fable completed two rendered reviews; independent Sol completed the final visual fallback after automatic review rejected the last Fable screenshot export.
+Current (08:00 a.m. EDT): complete and running from the main workspace at **http://127.0.0.1:4173**. The audited portable CMU snapshot has 49 offers/leads, 30 placed records, 24 usable foot routes, 30 destination-scoped transit contexts and 21 nearby-context records. Main-workspace install/build passed; **92 unit/integration tests and all five production browser flows passed**. Real discovery, routing, URL import, city change and network-failure checks are recorded in `docs/verification.md`. Fable completed two rendered reviews; an independent local Sol review completed the final visual check after automatic approval review rejected the final screenshot export. No work or approval is pending.
 
 ## Task ledger
 
@@ -18,7 +18,7 @@ Current (07:55 a.m. EDT): the application is implemented and the final local int
 | API and jobs | Implemented and exercised live | Bounded discovery, import and routing; immutable atomic snapshots; cancellation and market isolation |
 | Frontend | Iterated and visually reviewed | Fable visual1/2; dedicated Sol frontend lane; final independent local visual review |
 | Decision loop | Browser checks passed | Alternatives, comparison, shortlist, criteria, evidence, map, coverage, city change and network fallback |
-| Main-workspace handoff | In progress | Local integration, reproducible install/build, final tests and persistent production startup remain |
+| Main-workspace handoff | Complete | Integrated into main; locked install, build, 92 tests, 5 browser flows and cold production start passed; background server remains running |
 
 ## Execution decisions
 
@@ -29,8 +29,8 @@ Current (07:55 a.m. EDT): the application is implemented and the final local int
 
 ## Recovery pointers
 
-- Primary implementation: `.worktrees/build`, branch `build/address`; integrating locally into `main`. Keep isolated lanes and public research captures for provenance.
-- Production viewing URL: `http://127.0.0.1:4173`. Obsolete development previews will be stopped.
+- Primary application: repository root on `main`, integrated from `build/address` at `c434d5a`. Isolated lanes remain for provenance; public captures, caches and snapshot history are also preserved in root `data/`.
+- Production viewing URL: `http://127.0.0.1:4173`. Obsolete API previews have been stopped.
 - Portable seed: `research-20260912114226-842aacf0`, `data/seed/cmu.json`. Original housing observations remain dated about 07:00 a.m. EDT; metadata assembly is not presented as a newer housing fetch.
 - Run instructions: `README.md`, `docs/runbook.md`; presentation path: `docs/demo.md`.
 - Live acceptance artifacts: `docs/artifacts/live-discovery-acceptance.json`, `destination-import-acceptance.json`, `final-city-preferences-acceptance.json`, `network-fallback-acceptance.json`.

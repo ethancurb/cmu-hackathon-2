@@ -1,0 +1,26 @@
+{
+  "checkedAt": "2026-09-12T11:57:34.539Z",
+  "url": "http://127.0.0.1:4173",
+  "snapshotId": "research-20260912114226-842aacf0",
+  "createdAt": "2026-09-12T11:42:26.321Z",
+  "sourceObservedAt": [
+    "2026-09-12T11:00:44.827Z",
+    "2026-09-12T11:00:45.909Z",
+    "2026-09-12T11:00:47.024Z",
+    "2026-09-12T11:00:47.199Z"
+  ],
+  "homes": 49,
+  "placed": 30,
+  "usableFootRoutes": 24,
+  "homesWithTransit": 30,
+  "homesWithNearby": 21,
+  "counts": {
+    "total": 49,
+    "matches": 0,
+    "nearMatches": 42,
+    "needsVerification": 7
+  },
+  "destination": "Gates Hillman — mapped entrance",
+  "personalRentCapCents": 120000,
+  "occupants": 2
+}

@@ -2,6 +2,8 @@
 
 ## Start the local application
 
+The prepared September 12 morning workspace already has the production server running at the URL below. Its process record is `data/worker/server.json`, and its output is `data/worker/server.log`. The following commands are for a fresh installation or a later restart.
+
 From the repository root:
 
 ```sh
