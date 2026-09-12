@@ -2,7 +2,8 @@ import type { Fact, Home, Snapshot, WalkRoute } from '../../src/domain/schema.js
 import { SEED_CRITERIA } from '../../src/domain/schema.js';
 
 const at = '2026-09-12T09:00:00.000Z';
-const sourced = <T>(value: T, scopeKey = 'test:offer:2400'): Fact<T> => ({ value, state: 'sourced', evidenceIds: ['test:evidence:offer'], method: null, observedAt: at });
+const evidenceId = (scopeKey: string) => `test:evidence:${encodeURIComponent(scopeKey)}`;
+const sourced = <T>(value: T, scopeKey = 'test:offer:2400'): Fact<T> => ({ value, state: 'sourced', evidenceIds: [evidenceId(scopeKey)], method: null, observedAt: at });
 const unknown = <T>(): Fact<T> => ({ value: null, state: 'unknown', evidenceIds: [], method: null, observedAt: null });
 
 export const matchingRoute = (changes: Partial<WalkRoute> = {}): WalkRoute => ({
@@ -27,9 +28,12 @@ export const home2400 = (changes: Partial<Home> = {}): Home => ({
   ...changes,
 });
 
-export const syntheticSnapshot = (homes: Home[], routes: WalkRoute[] = [matchingRoute()]): Snapshot => ({
+export const syntheticSnapshot = (homes: Home[], routes: WalkRoute[] = [matchingRoute()]): Snapshot => {
+  const scopeKeys = new Set(homes.flatMap((home) => [home.buildingKey, home.offerKey, ...(home.floorPlanKey ? [home.floorPlanKey] : [])]));
+  return {
   schemaVersion: 1, id: 'test:snapshot:1', createdAt: at, discoveryMarket: SEED_CRITERIA.market, searchDescription: 'Synthetic test inventory only',
   researchScopes: [{ marketKey: 'pittsburgh|pa|us', areas: [], queriedBedrooms: [2], queriedMinBathrooms: 2, queriedMaxWholeRent: 240000, queriedPropertyTypes: ['house', 'apartment'], destinationVersion: SEED_CRITERIA.destination.version, scenarioMaxWalkSeconds: 1200, checkedAt: at, queryCount: 1, limitReasons: ['synthetic fixture'] }],
-  homes, evidence: [{ id: 'test:evidence:offer', sourceId: 'test:source', url: 'https://example.test/evidence', observedAt: at, channel: 'page', captureHash: 'test-hash', scopeKey: 'test:offer:2400', scopeKind: 'offer', appliesToAllUnits: false, excerpt: 'Synthetic fixture evidence', locator: 'test:row' }],
+  homes, evidence: [...scopeKeys].map((scopeKey) => ({ id: evidenceId(scopeKey), sourceId: 'test:source', url: 'https://example.test/evidence', observedAt: at, channel: 'page' as const, captureHash: 'test-hash', scopeKey, scopeKind: scopeKey.includes(':building:') ? 'building' as const : scopeKey.includes(':floorplan:') ? 'floor_plan' as const : 'offer' as const, appliesToAllUnits: scopeKey.includes(':building:'), excerpt: 'Synthetic fixture evidence', locator: 'test:row' })),
   routes, sources: [{ id: 'test:source', family: 'test', name: 'Synthetic source', url: 'https://example.test', accessMode: 'public_page', limitation: 'Synthetic fixture only' }], sourceRuns: [],
-});
+  };
+};

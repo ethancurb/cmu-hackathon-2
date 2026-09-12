@@ -1,12 +1,12 @@
 import type { Criteria, ResearchScope } from './schema.js';
 
-const marketKey = (criteria: Criteria) => `${criteria.market.label.split('/')[0]!.trim().toLowerCase()}|${criteria.market.region.toLowerCase()}|${criteria.market.country.toLowerCase()}`;
+export const normalizedMarketKey = (market: Criteria['market']) => `${market.label.split('/')[0]!.trim().toLowerCase()}|${market.region.toLowerCase()}|${market.country.toLowerCase()}`;
 const wholeHomeCeiling = (criteria: Criteria) => criteria.allocation.kind === 'equal'
   ? Math.floor(criteria.personalRentCap * criteria.allocation.occupants)
   : Math.floor(criteria.personalRentCap * 10000 / criteria.allocation.personalShareBps!);
 
 export function needsDiscovery(criteria: Criteria, scopes: ResearchScope[]): { needed: boolean; reason: string | null } {
-  const sameMarket = scopes.filter((scope) => scope.marketKey.toLowerCase() === marketKey(criteria));
+  const sameMarket = scopes.filter((scope) => scope.marketKey.toLowerCase() === normalizedMarketKey(criteria.market));
   if (!sameMarket.length) return { needed: true, reason: 'The requested market has not been researched.' };
   const sameDestination = sameMarket.filter((scope) => scope.destinationVersion === criteria.destination.version);
   if (!sameDestination.length) return { needed: true, reason: 'The destination changed, so routes and research must be refreshed.' };

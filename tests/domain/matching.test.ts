@@ -24,4 +24,25 @@ describe('evaluateHome', () => {
     const result = evaluateHome(home2400(), SEED_CRITERIA, [matchingRoute({ durationSeconds: 1200.1 })]);
     expect(result.constraints.find((constraint) => constraint.key === 'walk')?.outcome).toBe('fail');
   });
+
+  test('treats assumed hard facts as unknown rather than matches', () => {
+    const base = home2400();
+    const result = evaluateHome(home2400({ bedrooms: { ...base.bedrooms, state: 'assumed', evidenceIds: [], method: 'title guess' } }), SEED_CRITERIA, [matchingRoute()]);
+    expect(result.constraints.find((constraint) => constraint.key === 'bedrooms')?.outcome).toBe('unknown');
+    expect(result.fit).toBe('needs_verification');
+  });
+
+  test('uses the newest usable foot route for the requested destination coordinates', () => {
+    const older = matchingRoute({ id: 'test:route:unavailable', status: 'unavailable', durationSeconds: null, distanceMeters: null, geometry: null, snappedOrigin: null, snappedDestination: null, computedAt: '2026-09-12T08:00:00.000Z' });
+    const newer = matchingRoute({ id: 'test:route:usable', computedAt: '2026-09-12T10:00:00.000Z' });
+    const result = evaluateHome(home2400({ routeIds: [older.id, newer.id] }), SEED_CRITERIA, [older, newer]);
+    expect(result.routeId).toBe(newer.id);
+    expect(result.constraints.find((constraint) => constraint.key === 'walk')?.outcome).toBe('pass');
+  });
+
+  test('asks about unknown bathrooms before secondary utility questions', () => {
+    const base = home2400();
+    const result = evaluateHome(home2400({ bathrooms: { ...base.bathrooms, value: null, state: 'unknown', evidenceIds: [], method: null, observedAt: null } }), SEED_CRITERIA, [matchingRoute()]);
+    expect(result.questions.map((question) => question.key).indexOf('hard:bathrooms')).toBeLessThan(result.questions.map((question) => question.key).indexOf('cost:electricity'));
+  });
 });

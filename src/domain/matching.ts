@@ -9,7 +9,7 @@ const metresBetween = (a: { lat: number; lon: number }, b: { lat: number; lon: n
   return 6371000 * 2 * Math.atan2(Math.sqrt(v), Math.sqrt(1 - v));
 };
 const result = (key: string, outcome: ConstraintResult['outcome'], required: string | number, actual: string | number | null, unit: string | null, evidenceIds: string[] = [], delta: number | null = null): ConstraintResult => ({ key, outcome, required, actual, delta, unit, evidenceIds });
-const factResult = <T extends string | number>(key: string, fact: Fact<T>, required: T, passes: (value: T) => boolean, unit: string | null): ConstraintResult => fact.value === null || fact.state === 'conflicting'
+const factResult = <T extends string | number>(key: string, fact: Fact<T>, required: T, passes: (value: T) => boolean, unit: string | null): ConstraintResult => fact.value === null || fact.state !== 'sourced'
   ? result(key, 'unknown', required, null, unit, fact.evidenceIds)
   : result(key, passes(fact.value) ? 'pass' : 'fail', required, fact.value, unit, fact.evidenceIds);
 
@@ -22,28 +22,45 @@ export function evaluateHome(home: Home, criteria: Criteria, routes: WalkRoute[]
   ];
   const rentPasses = personalRentWithinCap(home, criteria);
   constraints.push(result('personal_rent', rentPasses === null ? 'unknown' : rentPasses ? 'pass' : 'fail', criteria.personalRentCap, cost.personalBaseRent, 'cents/month', home.rent.amount.evidenceIds));
-  const route = routes.find((candidate) => home.routeIds.includes(candidate.id) && candidate.destinationId === criteria.destination.id && candidate.destinationVersion === criteria.destination.version);
-  const routeUsable = route && route.status === 'ok' && route.durationSeconds !== null && route.snappedOrigin && route.snappedDestination && metresBetween(route.origin, route.snappedOrigin) <= 75 && metresBetween(route.requestedDestination, route.snappedDestination) <= 75;
+  const homeCoordinate = home.coordinate.state === 'sourced' ? home.coordinate.value : null;
+  const sameCoordinates = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => a.lat === b.lat && a.lon === b.lon;
+  const usableRoutes = routes.filter((candidate) => home.routeIds.includes(candidate.id)
+    && candidate.destinationId === criteria.destination.id
+    && candidate.destinationVersion === criteria.destination.version
+    && candidate.profile === 'foot'
+    && candidate.status === 'ok'
+    && candidate.durationSeconds !== null
+    && candidate.snappedOrigin !== null
+    && candidate.snappedDestination !== null
+    && sameCoordinates(candidate.requestedDestination, criteria.destination.coordinate)
+    && homeCoordinate !== null
+    && metresBetween(candidate.origin, homeCoordinate) <= 75
+    && metresBetween(candidate.origin, candidate.snappedOrigin) <= 75
+    && metresBetween(candidate.requestedDestination, candidate.snappedDestination) <= 75)
+    .sort((a, b) => b.computedAt.localeCompare(a.computedAt));
+  const route = usableRoutes[0];
+  const routeUsable = route !== undefined;
   constraints.push(!routeUsable ? result('walk', 'unknown', criteria.maxWalkSeconds, null, 'seconds') : result('walk', route.durationSeconds! <= criteria.maxWalkSeconds ? 'pass' : 'fail', criteria.maxWalkSeconds, route.durationSeconds!, 'seconds', [], route.durationSeconds! - criteria.maxWalkSeconds));
   for (const utilityName of criteria.requiredIncludedUtilities) {
     const utility = home.utilities.find((item) => item.name === utilityName);
-    constraints.push(!utility || utility.inclusion.value === null || utility.inclusion.state === 'conflicting'
+    constraints.push(!utility || utility.inclusion.value === null || utility.inclusion.state !== 'sourced'
       ? result(`utility:${utilityName}`, 'unknown', 'included', null, null, utility?.inclusion.evidenceIds ?? [])
       : result(`utility:${utilityName}`, utility.inclusion.value === 'included' ? 'pass' : 'fail', 'included', utility.inclusion.value, null, utility.inclusion.evidenceIds));
   }
   for (const key of criteria.mustHaveAmenities) {
     const amenity = canonicalAmenities.has(key) ? home.amenities.find((item) => item.key === key) : undefined;
     const value = amenity?.fact.value;
-    constraints.push(value === null || value === undefined || amenity?.fact.state === 'conflicting'
+    constraints.push(value === null || value === undefined || amenity?.fact.state !== 'sourced'
       ? result(`amenity:${key}`, 'unknown', 'true', null, null, amenity?.fact.evidenceIds ?? [])
       : result(`amenity:${key}`, value === true ? 'pass' : 'fail', 'true', String(Boolean(value)), null, amenity!.fact.evidenceIds));
   }
   if (home.listingStatus === 'reported_off_market' || home.listingStatus === 'historical') constraints.push(result('listing_status', 'fail', 'currently observed', home.listingStatus, null));
   const questions = [
-    ...cost.unknownItems.map((item) => ({ key: `cost:${item.key}`, priority: 1, text: item.reason, evidenceIds: [] })),
-    ...(home.availability.value === null ? [{ key: 'availability', priority: 2, text: 'Confirm current availability before touring.', evidenceIds: home.availability.evidenceIds }] : []),
-    ...(home.leaseTerms.value === null ? [{ key: 'lease_terms', priority: 3, text: 'Confirm lease term and conditions.', evidenceIds: home.leaseTerms.evidenceIds }] : []),
-  ];
+    ...constraints.filter((constraint) => constraint.outcome === 'unknown' && ['bedrooms', 'bathrooms', 'personal_rent', 'walk', 'property_type'].includes(constraint.key)).map((constraint) => ({ key: `hard:${constraint.key}`, priority: 1, text: `Verify ${constraint.key.replace('_', ' ')} before relying on this listing.`, evidenceIds: constraint.evidenceIds })),
+    ...cost.unknownItems.map((item) => ({ key: `cost:${item.key}`, priority: item.key === 'base_rent' ? 1 : 2, text: item.reason, evidenceIds: [] })),
+    ...(home.availability.value === null ? [{ key: 'availability', priority: 3, text: 'Confirm current availability before touring.', evidenceIds: home.availability.evidenceIds }] : []),
+    ...(home.leaseTerms.value === null ? [{ key: 'lease_terms', priority: 4, text: 'Confirm lease term and conditions.', evidenceIds: home.leaseTerms.evidenceIds }] : []),
+  ].sort((a, b) => a.priority - b.priority);
   const hasFail = constraints.some((constraint) => constraint.outcome === 'fail');
   const hasUnknown = constraints.some((constraint) => constraint.outcome === 'unknown');
   return { homeId: home.id, fit: hasFail ? 'near_match' : hasUnknown ? 'needs_verification' : 'matches', constraints, cost, routeId: route?.id ?? null, questions };

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { reconcileHomes } from '../../src/domain/reconcile.js';
-import { home2400 } from '../fixtures/homes.js';
+import { diffSnapshots, reconcileHomes } from '../../src/domain/reconcile.js';
+import { home2400, syntheticSnapshot } from '../fixtures/homes.js';
 
 describe('reconcileHomes', () => {
   test('keeps same-address offers with distinct units as separate homes', () => {
@@ -17,5 +17,25 @@ describe('reconcileHomes', () => {
 
   test('retains a previously observed offer when a later source run omits it', () => {
     expect(reconcileHomes([home2400()], []).map((home) => home.id)).toEqual(['test:home:2400']);
+  });
+
+  test('preserves conflicting duplicate observations and source provenance', () => {
+    const previous = home2400({ sourceListingIds: ['test:listing:old'] });
+    const incoming = home2400({ id: 'test:home:new-observation', sourceListingIds: ['test:listing:new'], lastObservedAt: '2026-09-12T10:00:00.000Z', rent: { ...home2400().rent, amount: { ...home2400().rent.amount, value: 230000 } } });
+    expect(reconcileHomes([previous], [incoming]).map((home) => home.id)).toEqual([previous.id, incoming.id]);
+  });
+
+  test('ignores timestamp-only refreshes while retaining material changes', () => {
+    const before = syntheticSnapshot([home2400()]);
+    const same = home2400({ lastObservedAt: '2026-09-12T10:00:00.000Z', bedrooms: { ...home2400().bedrooms, observedAt: '2026-09-12T10:00:00.000Z' } });
+    const changed = home2400({ rent: { ...home2400().rent, amount: { ...home2400().rent.amount, value: 239000 } } });
+    expect(diffSnapshots(before, syntheticSnapshot([same])).changedIds).toEqual([]);
+    expect(diffSnapshots(before, syntheticSnapshot([changed])).changedIds).toEqual([changed.id]);
+  });
+
+  test('treats fact state and evidence provenance as material refresh changes', () => {
+    const before = syntheticSnapshot([home2400()]);
+    const home = home2400({ bedrooms: { ...home2400().bedrooms, state: 'derived', method: 'declared conversion', evidenceIds: ['test:evidence:derived'] } });
+    expect(diffSnapshots(before, syntheticSnapshot([home])).changedIds).toEqual([home.id]);
   });
 });

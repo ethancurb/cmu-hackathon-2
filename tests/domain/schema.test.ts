@@ -14,6 +14,10 @@ describe('criteria contract', () => {
     expect(CriteriaSchema.parse(SEED_CRITERIA).personalRentCap).toBe(120000);
   });
 
+  test('builds synthetic snapshots with evidence scoped to each fact', () => {
+    expect(validateSnapshot(syntheticSnapshot([home2400()])).homes).toHaveLength(1);
+  });
+
   test('rejects evidence that points at an undeclared source', () => {
     const snapshot = syntheticSnapshot([home2400()]);
     snapshot.evidence[0]!.sourceId = 'test:missing-source';
