@@ -24,8 +24,10 @@ test('account menu shows a verified profile and stays compact on mobile', async 
   await expect(page.locator('.account-popover .account-verified')).toHaveText('Email verified');
   await expect(page.locator('.account-popover .account-copy')).toHaveText('Saved on this browser');
   await expect(page.locator('.account-popover a[href="/auth/logout"]')).toBeVisible();
+  await page.getByRole('link', { name: 'Log out', exact: true }).click({ trial: true, timeout: 2000 });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(accountSummary(page)).toBeVisible();
+  await page.getByRole('link', { name: 'Log out', exact: true }).click({ trial: true, timeout: 2000 });
   const dimensions = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth }));
   expect(dimensions.width).toBeLessThanOrEqual(dimensions.viewport + 1);
 });

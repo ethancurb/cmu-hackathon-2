@@ -75,7 +75,7 @@
 .reset-button { padding: 2px 0; border: 0; border-bottom: 1px solid var(--line-strong); background: transparent; color: var(--ink-secondary); font-size: 11px; }
 .reset-button:hover { color: var(--route); border-color: var(--route); }
 .account-loading,.account-disabled { color: var(--ink-tertiary); font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
-.account-menu { position: relative; z-index: 150; }
+.account-menu { position: relative; z-index: 1000; }
 .account-menu summary { display: flex; align-items: center; gap: 4px; min-height: 27px; padding: 3px 0; border-bottom: 1px solid transparent; color: var(--ink-secondary); cursor: pointer; font-size: 11px; list-style: none; }
 .account-menu summary::-webkit-details-marker { display: none; }
 .account-menu[open] summary,.account-menu summary:hover { border-color: var(--route); color: var(--route); }
