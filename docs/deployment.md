@@ -4,7 +4,8 @@ Project: `onestop-hackcmu`, Vercel scope `ethanscurb-gmailcoms-projects`.
 Public URL: https://onestop-hackcmu.vercel.app
 
 The Vite frontend and a Node serverless function deploy from this repository.
-`api/[...path].ts` exposes the Express API without a persistent listener.
+`api/index.ts` exposes the Express API without a persistent listener. Rewrites
+explicitly preserve nested API and Auth0 paths for the single Node function.
 `server/hosted.ts` loads the audited 49-record CMU seed and uses temporary cache
 directories. It does not access laptop CLI subscriptions or publish ephemeral
 research snapshots. Live discovery, source import, and new route jobs remain

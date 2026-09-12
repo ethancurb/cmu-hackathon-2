@@ -4,9 +4,10 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "env": { "NODE_OPTIONS": "--experimental-require-module" },
-  "functions": { "api/[...path].ts": { "maxDuration": 60, "includeFiles": "data/seed/cmu.json" } },
+  "functions": { "api/index.ts": { "maxDuration": 60, "includeFiles": "data/seed/cmu.json" } },
   "rewrites": [
-    { "source": "/auth/:path*", "destination": "/api/auth/:path*" },
+    { "source": "/api/:path*", "destination": "/api?__onestop_route=api/:path*" },
+    { "source": "/auth/:path*", "destination": "/api?__onestop_route=auth/:path*" },
     { "source": "/((?!api(?:/|$)|auth(?:/|$)).*)", "destination": "/index.html" }
   ]
 }
