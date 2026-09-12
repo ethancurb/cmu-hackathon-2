@@ -159,3 +159,53 @@
   .group-heading { min-height: 28px; padding: 3px 12px; }.group-sort-context { display: none; }.group-tools { gap: 5px; }.group-heading select { max-width: 130px; font-size: 9px; }
   .home-row { padding: 9px 12px 7px; }.row-main { grid-template-columns: 20px minmax(0,1fr) auto; gap: 6px; }.row-identity { grid-column: 2; gap: 6px; }.row-photo-wrap { flex-basis: 42px; }.row-photo { width: 42px; height: 40px; }.row-photo-wrap small { font-size: 7px; }.row-address { font-size: 15px; }.row-property { font-size: 10px; }.row-cost { grid-column: 2; grid-row: 2; margin-top: 2px; }.row-price,.row-walk strong { font-size: 20px; }.row-walk { grid-column: 3; grid-row: 1/3; align-self: center; text-align: right; }.row-walk span { max-width: 85px; font-size: 9px; }.row-cost-note { max-width: 205px; font-size: 9px; }.row-evidence { gap: 5px; margin: 5px 0 0 26px; }.segment { width: 7px; height: 7px; }.utility-summary,.row-cost-unknown { font-size: 9px; }.row-cost-unknown { overflow: hidden; text-overflow: ellipsis; }.row-source { display: none; }.row-reason { margin-left: 26px; font-size: 9px; }.row-actions { margin: 5px 0 0 26px; }.row-actions:before { content: 'Checked source in details'; color: var(--ink-tertiary); font-size: 9px; }.action-button,.row-link { font-size: 9px; }.action-button svg { width: 12px; }.row-link { margin-left: auto; }
 }
+
+/* Niche request: highlighted group, row badges, criteria control and map marks. The niche
+   accent marks model-assessed selection only; it never restyles fit or evidence colors. */
+.niche-group { padding: 12px 24px 10px; border-bottom: 2px solid var(--niche); background: var(--niche-soft); }
+.niche-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.niche-title { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.niche-title svg { color: var(--niche); flex-shrink: 0; }
+.niche-title .eyebrow { color: var(--niche); white-space: nowrap; }
+.niche-title strong { overflow: hidden; font-size: 14px; letter-spacing: -.015em; text-overflow: ellipsis; white-space: nowrap; }
+.niche-status { display: inline-flex; align-items: center; gap: 9px; color: var(--ink-secondary); font-size: 11px; }
+.niche-status .pulse-dot { background: var(--niche); }
+.niche-cancel { min-height: 26px; padding: 4px 9px; font-size: 11px; }
+.niche-note { margin: 9px 0 2px; color: var(--ink-secondary); font-size: 12px; }
+.niche-row { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1.5fr) minmax(0,1.2fr) 18px; gap: 4px 14px; align-items: center; width: 100%; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--niche); background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
+.niche-row:hover, .niche-row.is-selected { border-color: var(--niche); }
+.niche-row-main { min-width: 0; }
+.niche-row-main strong { display: block; overflow: hidden; font-size: 13px; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
+.niche-row-facts { color: var(--ink-secondary); font-size: 10px; }
+.niche-row-verdict { min-width: 0; }
+.niche-reason { display: block; color: var(--ink); font-size: 11px; line-height: 1.35; }
+.niche-tags { display: flex; gap: 6px; margin-top: 3px; flex-wrap: wrap; }
+.niche-tier { padding: 1px 6px; font-family: var(--font-mono); font-size: 9px; letter-spacing: .02em; text-transform: uppercase; }
+.niche-tier-listing_data { border: 1px solid var(--line-strong); background: var(--surface-muted); color: var(--ink-secondary); }
+.niche-tier-model_assessment { border: 1px solid var(--niche); background: var(--niche-soft); color: var(--niche); }
+.niche-partial { padding: 1px 6px; border: 1px solid var(--amber); background: var(--amber-soft); color: var(--amber); font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; }
+.niche-row-fit { min-width: 0; font-size: 10px; }
+.niche-fit-ok { color: var(--route); font-weight: 600; }
+.niche-fit-miss { color: var(--amber); font-weight: 600; }
+.niche-mitigation { display: block; margin-top: 2px; color: var(--ink-secondary); font-size: 10px; line-height: 1.35; }
+.niche-row-arrow { color: var(--niche); }
+.niche-footnote { margin: 8px 0 0; color: var(--ink-tertiary); font-size: 10px; }
+.niche-badge { padding: 1px 7px; border: 1px solid var(--niche); background: var(--niche-soft); color: var(--niche); font-family: var(--font-mono); font-size: 9px; letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
+.niche-trigger svg:first-child { color: var(--niche); }
+.niche-trigger.has-niche strong { max-width: 200px; overflow: hidden; color: var(--niche); text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
+.niche-pop { min-width: 300px; }
+.niche-pop input { width: 100%; }
+.niche-pop-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.home-marker.is-niche { border-color: var(--niche); box-shadow: 0 0 0 2px var(--niche-soft), 0 1px 4px rgba(0,0,0,.25); }
+.home-marker.is-niche span { color: var(--niche); }
+.niche-place-marker { background: none; border: 0; }
+.niche-place-content { display: inline-flex; align-items: center; gap: 5px; }
+.niche-place-dot { width: 10px; height: 10px; border: 2px solid #fff; border-radius: 50%; background: var(--niche); box-shadow: 0 1px 3px rgba(0,0,0,.35); flex-shrink: 0; }
+.niche-place-label { padding: 1px 6px; background: var(--niche); color: #fff; font-family: var(--font-mono); font-size: 9px; white-space: nowrap; }
+.niche-tie { stroke: var(--niche); }
+@media (max-width: 900px) {
+  .niche-group { padding: 10px 14px 8px; }
+  .niche-row { grid-template-columns: minmax(0,1fr) 18px; }
+  .niche-row-verdict, .niche-row-fit { grid-column: 1; }
+  .niche-row-arrow { grid-column: 2; grid-row: 1 / span 3; }
+}

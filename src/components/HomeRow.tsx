@@ -1,10 +1,10 @@
 import { ArrowUpRight, Bookmark, GitCompareArrows } from 'lucide-react';
-import type { Criteria, EvaluatedHome, Home, Snapshot } from '../domain/schema.js';
+import type { Criteria, EvaluatedHome, Home, NicheAssessment, Snapshot } from '../domain/schema.js';
 import { decisionReason, destinationName, dollars, homeRoute, layout, minute, shortDate, title, utilities, utilityFor, utilityState, wholeRentLabel } from '../lib/view.js';
 
-type Props = { snapshot: Snapshot; criteria: Criteria; home: Home; result: EvaluatedHome; number: number; selected: boolean; saved: boolean; comparing: boolean; onSelect: () => void; onSave: () => void; onCompare: () => void; onHover: (hovered: boolean) => void };
+type Props = { snapshot: Snapshot; criteria: Criteria; home: Home; result: EvaluatedHome; number: number; selected: boolean; saved: boolean; comparing: boolean; onSelect: () => void; onSave: () => void; onCompare: () => void; onHover: (hovered: boolean) => void; niche?: NicheAssessment };
 
-export function HomeRow({ snapshot, criteria, home, result, number, selected, saved, comparing, onSelect, onSave, onCompare, onHover }: Props) {
+export function HomeRow({ snapshot, criteria, home, result, number, selected, saved, comparing, onSelect, onSave, onCompare, onHover, niche }: Props) {
   const route = homeRoute(snapshot, result);
   const source = snapshot.sources.find(s => {
     try { return new URL(home.primaryUrl).host === new URL(s.url).host; } catch { return false; }
@@ -34,7 +34,7 @@ export function HomeRow({ snapshot, criteria, home, result, number, selected, sa
         <span>{home.coordinate.value ? `walk to ${destinationName(criteria)}` : 'location not mapped'}</span>
       </span>
     </button>
-    <div className="row-evidence"><span className="utility-segments" role="img" aria-label={states.map(u => `${u.label}: ${u.state}`).join('; ')}>{states.map(u => <i key={u.key} className={`segment segment-${u.state.replaceAll(' ','-')}`} title={`${u.label}: ${u.state}`}/>)}</span><span className="utility-summary">{utilityText}</span>{result.cost.unknownItems.length > 0 && <span className="row-cost-unknown">Costs to verify</span>}{home.listingStatus !== 'observed' && <span className="row-status">{home.listingStatus === 'stale' ? 'Not seen in latest source check' : home.listingStatus === 'historical' ? 'Historical record' : 'Reported off market'}</span>}<span className="row-source mono">{source?.name ?? 'Source link'} · checked {shortDate(home.lastObservedAt)}</span></div>
+    <div className="row-evidence">{niche && <span className={`niche-badge niche-tier-${niche.provenance}`} title={niche.reason}>Matches your request{niche.confidence === 'partial' ? ' · close' : ''}</span>}<span className="utility-segments" role="img" aria-label={states.map(u => `${u.label}: ${u.state}`).join('; ')}>{states.map(u => <i key={u.key} className={`segment segment-${u.state.replaceAll(' ','-')}`} title={`${u.label}: ${u.state}`}/>)}</span><span className="utility-summary">{utilityText}</span>{result.cost.unknownItems.length > 0 && <span className="row-cost-unknown">Costs to verify</span>}{home.listingStatus !== 'observed' && <span className="row-status">{home.listingStatus === 'stale' ? 'Not seen in latest source check' : home.listingStatus === 'historical' ? 'Historical record' : 'Reported off market'}</span>}<span className="row-source mono">{source?.name ?? 'Source link'} · checked {shortDate(home.lastObservedAt)}</span></div>
     {result.fit !== 'matches' && <div className="row-reason">{decisionReason(result, criteria)}</div>}
     <div className="row-actions">
       <button type="button" className={`action-button ${saved ? 'active' : ''}`} onClick={onSave} aria-pressed={saved} aria-label={`${saved ? 'Remove' : 'Add'} ${title(home)} ${saved ? 'from' : 'to'} shortlist`}><Bookmark size={15} fill={saved ? 'currentColor' : 'none'} /> {saved ? 'Saved' : 'Shortlist'}</button>
