@@ -154,14 +154,23 @@ export const SnapshotSchema = z.object({
 }).strict();
 
 export type Evidence = z.infer<typeof EvidenceSchema>;
+export type Id = string;
+export type Cents = number;
+export type ISODateTime = string;
+export type Coordinates = z.infer<typeof CoordinatesSchema>;
 export type Fact<T> = { value: T | null; state: 'sourced' | 'derived' | 'assumed' | 'unknown' | 'conflicting'; evidenceIds: string[]; method: string | null; observedAt: string | null; alternatives?: { value: T; evidenceIds: string[] }[] };
 export type Quote = z.infer<typeof QuoteSchema>; export type Charge = z.infer<typeof ChargeSchema>; export type Utility = z.infer<typeof UtilitySchema>; export type UtilityName = z.infer<typeof UtilityNameSchema>;
 export type Destination = z.infer<typeof DestinationSchema>; export type WalkRoute = z.infer<typeof WalkRouteSchema>; export type TransitContext = z.infer<typeof TransitContextSchema>; export type NearbyPlace = z.infer<typeof NearbyPlaceSchema>; export type ContextFact = z.infer<typeof ContextFactSchema>; export type Home = z.infer<typeof HomeSchema>;
 export type Criteria = z.infer<typeof CriteriaSchema>; export type CriteriaPatch = z.infer<typeof CriteriaPatchSchema>; export type ResearchScope = z.infer<typeof ResearchScopeSchema>; export type SourceEntry = z.infer<typeof SourceEntrySchema>; export type SourceRun = z.infer<typeof SourceRunSchema>; export type Snapshot = z.infer<typeof SnapshotSchema>;
+export type ConstraintResult = { key: string; outcome: 'pass' | 'fail' | 'unknown'; required: string | number; actual: string | number | null; delta: number | null; unit: string | null; evidenceIds: string[] };
+export type CostSummary = { wholeHomeBaseRent: number | null; personalBaseRent: number | null; knownPersonalRecurring: number | null; unknownItems: { key: string; reason: string }[]; completeness: 'known_components_only' | 'complete_for_stated_components' | 'unknown'; allocationLabel: string; evidenceIds: string[] };
+export type EvaluatedHome = { homeId: string; fit: 'matches' | 'near_match' | 'needs_verification'; constraints: ConstraintResult[]; cost: CostSummary; routeId: string | null; questions: { key: string; priority: number; text: string; evidenceIds: string[] }[] };
+export type Alternative = { id: string; patch: CriteriaPatch; label: string; newlyMatchedIds: string[]; noLongerMatchedIds: string[]; changed: { key: string; before: number | string; after: number | string; unit: string }[] };
+export type SearchResult = { snapshotId: string; requestId: string; criteria: Criteria; results: EvaluatedHome[]; alternatives: Alternative[]; counts: { total: number; matches: number; nearMatches: number; needsVerification: number }; discoveryNeeded: boolean; discoveryReason: string | null };
 
 export const SEED_CRITERIA: Criteria = CriteriaSchema.parse({
   market: { label: 'Pittsburgh / CMU', region: 'PA', country: 'US' },
-  destination: { id: 'destination:gates-hillman', version: 'osm-node-1704796692-v1', label: 'Gates Hillman', coordinate: { lat: 40.4440338, lon: -79.9445593 }, evidenceIds: ['destination:gates-hillman:osm'], caveat: 'Mapped entrance; physical entrance verification is pending.' },
+  destination: { id: 'destination:gates-hillman', version: 'osm-node-1704796692-v1', label: 'Gates Hillman — mapped entrance', coordinate: { lat: 40.4440338, lon: -79.9445593 }, evidenceIds: ['destination:gates-hillman:osm'], caveat: 'Mapped entrance; physical entrance verification is pending.' },
   personalRentCap: 120000, allocation: { occupants: 2, kind: 'equal', personalShareBps: null }, bedrooms: 2, minBathrooms: 2,
   propertyTypes: ['house', 'apartment'], maxWalkSeconds: 1200, moveIn: null, leaseMonths: null,
   mustHaveAmenities: [], niceToHaveAmenities: [], requiredIncludedUtilities: [], sort: 'personal_rent',
@@ -178,8 +187,10 @@ export function validateSnapshot(input: unknown): Snapshot {
   unique('home', snapshot.homes.map((home) => home.id)); unique('evidence', snapshot.evidence.map((item) => item.id)); unique('route', snapshot.routes.map((route) => route.id)); unique('source', snapshot.sources.map((source) => source.id));
   const evidence = new Map(snapshot.evidence.map((item) => [item.id, item]));
   const evidenceIds = new Set(evidence.keys()); const homeIds = new Set(snapshot.homes.map((home) => home.id)); const routeIds = new Set(snapshot.routes.map((route) => route.id)); const sourceIds = new Set(snapshot.sources.map((source) => source.id));
+  if (!snapshot.evidence.every((item) => sourceIds.has(item.sourceId))) throw new Error('evidence references missing source');
   const verifyFact = (fact: Fact<unknown>, scopeKeys: string[], hard = false) => {
     if (!allKnownReferencesExist(fact.evidenceIds, evidenceIds)) throw new Error('fact references missing evidence');
+    if (fact.alternatives && !fact.alternatives.every((alternative) => allKnownReferencesExist(alternative.evidenceIds, evidenceIds))) throw new Error('fact alternative references missing evidence');
     if (fact.state === 'sourced') {
       if (hard && isSearchIndexOnly(fact.evidenceIds, evidence)) throw new Error('search-index evidence cannot prove hard facts');
       if (!fact.evidenceIds.every((id) => scopeKeys.includes(evidence.get(id)!.scopeKey))) throw new Error('sourced fact has incompatible evidence scope');
@@ -187,15 +198,21 @@ export function validateSnapshot(input: unknown): Snapshot {
   };
   for (const home of snapshot.homes) {
     const buildingOrOffer = [home.buildingKey, home.offerKey, ...(home.floorPlanKey ? [home.floorPlanKey] : [])];
+    const offerOrPlan = [home.offerKey, ...(home.floorPlanKey ? [home.floorPlanKey] : [])];
     verifyFact(home.title, buildingOrOffer); verifyFact(home.address, [home.buildingKey]); verifyFact(home.unitLabel, [home.offerKey]); verifyFact(home.coordinate, [home.buildingKey, home.offerKey]);
-    verifyFact(home.propertyType, buildingOrOffer, true); verifyFact(home.bedrooms, buildingOrOffer, true); verifyFact(home.bathrooms, buildingOrOffer, true); verifyFact(home.availability, [home.offerKey], true);
+    verifyFact(home.propertyType, buildingOrOffer, true); verifyFact(home.bedrooms, offerOrPlan, true); verifyFact(home.bathrooms, offerOrPlan, true); verifyFact(home.fullBaths, offerOrPlan); verifyFact(home.halfBaths, offerOrPlan); verifyFact(home.concessions, [home.offerKey]); verifyFact(home.availability, [home.offerKey], true); verifyFact(home.leaseTerms, [home.offerKey]);
     verifyFact(home.rent.amount, [home.offerKey], true); verifyFact(home.rent.upperAmount, [home.offerKey], true);
     for (const charge of home.charges) { verifyFact(charge.amount, [home.offerKey, home.buildingKey]); verifyFact(charge.required, [home.offerKey, home.buildingKey]); verifyFact(charge.refundable, [home.offerKey, home.buildingKey]); }
     for (const utility of home.utilities) {
       if (!allKnownReferencesExist(utility.chargeIds, new Set(home.charges.map((charge) => charge.id)))) throw new Error('utility references missing charge');
       verifyFact(utility.inclusion, [home.offerKey, home.buildingKey]); verifyFact(utility.terms, [home.offerKey, home.buildingKey]); verifyFact(utility.applicable, [home.offerKey, home.buildingKey]);
+      for (const evidenceId of [...utility.inclusion.evidenceIds, ...utility.terms.evidenceIds, ...utility.applicable.evidenceIds]) if (evidence.get(evidenceId)?.scopeKey === home.buildingKey && !evidence.get(evidenceId)?.appliesToAllUnits) throw new Error('building utility evidence must explicitly apply to all units');
     }
     if (!allKnownReferencesExist(home.routeIds, routeIds)) throw new Error('home references missing route');
+    for (const context of [...home.amenities, ...home.reviews]) verifyFact(context.fact, context.scope === 'building' ? [home.buildingKey] : context.scope === 'unit' ? [home.offerKey] : buildingOrOffer);
+    for (const place of home.nearby) if (!allKnownReferencesExist(place.evidenceIds, evidenceIds)) throw new Error('nearby place references missing evidence');
+    for (const transit of home.transit) if (!allKnownReferencesExist(transit.evidenceIds, evidenceIds)) throw new Error('transit references missing evidence');
+    if (home.photo && !evidenceIds.has(home.photo.evidenceId)) throw new Error('photo references missing evidence');
   }
   for (const route of snapshot.routes) if (route.destinationId !== SEED_CRITERIA.destination.id && !snapshot.researchScopes.some((scope) => scope.destinationVersion === route.destinationVersion)) throw new Error('route destination does not resolve to snapshot scope');
   for (const sourceRun of snapshot.sourceRuns) {
