@@ -7,6 +7,7 @@ import { createJobManager, type JobOutput } from './jobs.js';
 import type { SnapshotStore } from './snapshots.js';
 import { AppError } from './errors.js';
 import { SOURCE_REGISTRY } from '../jobs/sources/registry.js';
+import { assessNiche, type NicheOptions } from './niche.js';
 
 export type Workflows = {
   discovery: (criteria: Criteria, signal: AbortSignal, progress: (message: string) => void) => Promise<JobOutput>;
@@ -14,7 +15,7 @@ export type Workflows = {
   destinations: (query: string, market: Criteria['market'], signal: AbortSignal) => Promise<Destination[]>;
   import: (sourceId: string, url: string, text: string, signal: AbortSignal, progress: (message: string) => void, context?: { snapshotId: string; criteria: Criteria }) => Promise<JobOutput>;
 };
-export type ApiOptions = { store: SnapshotStore; workflows: Workflows; seed?: Criteria; staticDirectory?: string; discoveryEnabled?: boolean; routingEnabled?: boolean };
+export type ApiOptions = { store: SnapshotStore; workflows: Workflows; seed?: Criteria; staticDirectory?: string; discoveryEnabled?: boolean; routingEnabled?: boolean; niche?: NicheOptions };
 
 const key = (input: unknown) => createHash('sha256').update(JSON.stringify(input)).digest('hex');
 const unavailable = (capability: string) => new AppError('CAPABILITY_UNAVAILABLE', `${capability} is unavailable in this viewing session. Saved research remains usable.`, 503);
@@ -69,6 +70,23 @@ export function createApp(options: ApiOptions) {
     response.status(202).json({ job });
   });
   app.get('/api/jobs/:id', (request, response) => response.json({ job: jobs.get(request.params.id) }));
+  app.post('/api/niche', async (request, response) => {
+    const body = z.object({ snapshotId: z.string(), query: z.string().trim().min(1).max(200) }).strict().parse(request.body);
+    const current = await options.store.loadCurrent();
+    if (body.snapshotId !== current.id) throw new AppError('STALE_SNAPSHOT', 'New research is available. Refresh the snapshot before a niche search.', 409);
+    // Cancel is the client aborting its fetch: the request closes and the upstream call is
+    // aborted with it. No job record, no snapshot publication - a niche result is not research.
+    const controller = new AbortController();
+    // The request body is already consumed, so its own 'close' fires at message end;
+    // a client hang-up surfaces as the *response* stream closing before it was written.
+    response.on('close', () => { if (!response.writableEnded) controller.abort(); });
+    try {
+      response.json(await assessNiche(current, body.query, controller.signal, options.niche));
+    } catch (error) {
+      if (controller.signal.aborted) return; // the caller hung up; there is nobody to answer
+      throw error;
+    }
+  });
   app.post('/api/destination', async (request, response) => {
     const body = z.union([
       z.object({ query: z.string().trim().min(2).max(180), market: CriteriaSchema.shape.market }).strict(),

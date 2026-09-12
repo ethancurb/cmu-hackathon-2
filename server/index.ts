@@ -5,6 +5,9 @@ import { createApp } from './api.js';
 import { createWorkflows } from './workflows.js';
 import { savedSeed } from './research.js';
 
+// Optional local secrets (XAI_API_KEY for the niche assistant). Shell variables win.
+try { process.loadEnvFile(path.join(process.cwd(), '.env')); } catch { /* no .env is fine */ }
+
 const store = createSnapshotStore(path.join(process.cwd(), 'data'));
 try { await store.loadCurrent(); }
 catch (error) {
