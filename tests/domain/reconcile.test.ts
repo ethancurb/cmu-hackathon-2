@@ -38,4 +38,10 @@ describe('reconcileHomes', () => {
     const home = home2400({ bedrooms: { ...home2400().bedrooms, state: 'derived', method: 'declared conversion', evidenceIds: ['test:evidence:derived'] } });
     expect(diffSnapshots(before, syntheticSnapshot([home])).changedIds).toEqual([home.id]);
   });
+
+  test('does not count a new capture ID or row ordering as a changed housing offer', () => {
+    const before = home2400();
+    const refreshed = home2400({ bedrooms: { ...before.bedrooms, evidenceIds: ['new-capture-id'], observedAt: '2026-09-12T11:00:00.000Z' }, utilities: [...before.utilities].reverse() });
+    expect(diffSnapshots(syntheticSnapshot([before]), syntheticSnapshot([refreshed])).changedIds).toEqual([]);
+  });
 });

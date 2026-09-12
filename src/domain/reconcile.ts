@@ -13,9 +13,9 @@ export function reconcileHomes(existing: Home[], incoming: Home[]): Home[] {
 }
 
 const stableValue = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(stableValue);
+  if (Array.isArray(value)) return value.map(stableValue).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value as Record<string, unknown>)
-    .filter(([key]) => key !== 'lastObservedAt' && key !== 'observedAt')
+    .filter(([key]) => !['lastObservedAt', 'observedAt', 'evidenceId', 'evidenceIds', 'captureHash', 'routeIds'].includes(key))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, item]) => [key, stableValue(item)]));
   return value;

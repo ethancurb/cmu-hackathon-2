@@ -22,7 +22,8 @@ export function evaluateHome(home: Home, criteria: Criteria, routes: WalkRoute[]
   ];
   const rentPasses = personalRentWithinCap(home, criteria);
   constraints.push(result('personal_rent', rentPasses === null ? 'unknown' : rentPasses ? 'pass' : 'fail', criteria.personalRentCap, cost.personalBaseRent, 'cents/month', home.rent.amount.evidenceIds));
-  const homeCoordinate = home.coordinate.state === 'sourced' ? home.coordinate.value : null;
+  // A recorded address geocode is a supported input to a computed walk, not a guessed listing fact.
+  const homeCoordinate = ['sourced', 'derived'].includes(home.coordinate.state) && home.coordinate.evidenceIds.length > 0 ? home.coordinate.value : null;
   const sameCoordinates = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => a.lat === b.lat && a.lon === b.lon;
   const usableRoutes = routes.filter((candidate) => home.routeIds.includes(candidate.id)
     && candidate.destinationId === criteria.destination.id
@@ -55,10 +56,12 @@ export function evaluateHome(home: Home, criteria: Criteria, routes: WalkRoute[]
       : result(`amenity:${key}`, value === true ? 'pass' : 'fail', 'true', String(Boolean(value)), null, amenity!.fact.evidenceIds));
   }
   if (home.listingStatus === 'reported_off_market' || home.listingStatus === 'historical') constraints.push(result('listing_status', 'fail', 'currently observed', home.listingStatus, null));
+  const statedAvailabilityDate = home.availability.value?.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+  const pastAvailability = statedAvailabilityDate !== undefined && statedAvailabilityDate < home.lastObservedAt.slice(0, 10);
   const questions = [
     ...constraints.filter((constraint) => constraint.outcome === 'unknown' && ['bedrooms', 'bathrooms', 'personal_rent', 'walk', 'property_type'].includes(constraint.key)).map((constraint) => ({ key: `hard:${constraint.key}`, priority: 1, text: `Verify ${constraint.key.replace('_', ' ')} before relying on this listing.`, evidenceIds: constraint.evidenceIds })),
     ...cost.unknownItems.map((item) => ({ key: `cost:${item.key}`, priority: item.key === 'base_rent' ? 1 : 2, text: item.reason, evidenceIds: [] })),
-    ...(home.availability.value === null ? [{ key: 'availability', priority: 3, text: 'Confirm current availability before touring.', evidenceIds: home.availability.evidenceIds }] : []),
+    ...(home.availability.value === null || home.availability.state !== 'sourced' || pastAvailability || home.scope === 'floor_plan' ? [{ key: 'availability', priority: 3, text: pastAvailability ? `The source lists ${statedAvailabilityDate}, a date before this observation. Confirm a currently vacant unit and move-in date.` : home.scope === 'floor_plan' ? 'This is an advertised floor plan. Confirm a vacant unit at this price and its move-in date.' : 'Confirm current availability before touring.', evidenceIds: home.availability.evidenceIds }] : []),
     ...(home.leaseTerms.value === null ? [{ key: 'lease_terms', priority: 4, text: 'Confirm lease term and conditions.', evidenceIds: home.leaseTerms.evidenceIds }] : []),
   ].sort((a, b) => a.priority - b.priority);
   const hasFail = constraints.some((constraint) => constraint.outcome === 'fail');

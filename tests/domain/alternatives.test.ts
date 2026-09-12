@@ -10,6 +10,14 @@ describe('suggestAlternatives', () => {
     expect(alternatives.some((alternative) => alternative.newlyMatchedIds.includes('test:home:over') && alternative.patch.personalRentCap === 120001)).toBe(true);
   });
 
+  test('shows a $7.50 increase before a $500 increase even when the latter unlocks more homes', () => {
+    const almost = home2400({ id: 'test:almost', rent: { ...home2400().rent, amount: { ...home2400().rent.amount, value: 241500 } } });
+    const expensive = home2400({ id: 'test:expensive', rent: { ...home2400().rent, amount: { ...home2400().rent.amount, value: 340000 } } });
+    const choices = suggestAlternatives(syntheticSnapshot([almost, expensive]), SEED_CRITERIA);
+    expect(choices[0]?.patch.personalRentCap).toBe(120750);
+    expect(choices[0]?.newlyMatchedIds).toEqual(['test:almost']);
+  });
+
   test('keeps one alternative from each meaningful sacrifice group', () => {
     const expensive = home2400({ id: 'test:home:expensive', rent: { ...home2400().rent, amount: { ...home2400().rent.amount, value: 250000 } } });
     const bath = home2400({ id: 'test:home:bath', bathrooms: { ...home2400().bathrooms, value: 1.5 } });

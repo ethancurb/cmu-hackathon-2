@@ -45,4 +45,20 @@ describe('evaluateHome', () => {
     const result = evaluateHome(home2400({ bathrooms: { ...base.bathrooms, value: null, state: 'unknown', evidenceIds: [], method: null, observedAt: null } }), SEED_CRITERIA, [matchingRoute()]);
     expect(result.questions.map((question) => question.key).indexOf('hard:bathrooms')).toBeLessThan(result.questions.map((question) => question.key).indexOf('cost:electricity'));
   });
+
+  test('retains a past advertised availability date while requiring current vacancy confirmation', () => {
+    const base = home2400();
+    const home = home2400({ availability: { ...base.availability, value: '2022-12-29' } });
+    const result = evaluateHome(home, SEED_CRITERIA, [matchingRoute()]);
+    expect(home.availability.value).toBe('2022-12-29');
+    expect(result.questions.find(question => question.key === 'availability')?.text).toContain('currently vacant unit');
+  });
+
+  test('accepts an evidenced address geocode as a route origin but rejects an assumed coordinate', () => {
+    const base = home2400();
+    const geocoded = home2400({ coordinate: { ...base.coordinate, state: 'derived', method: 'Address geocoded by the recorded provider' } });
+    expect(evaluateHome(geocoded, SEED_CRITERIA, [matchingRoute()]).constraints.find(item => item.key === 'walk')?.outcome).toBe('pass');
+    const assumed = home2400({ coordinate: { ...base.coordinate, state: 'assumed', method: 'Estimated position in the neighborhood' } });
+    expect(evaluateHome(assumed, SEED_CRITERIA, [matchingRoute()]).constraints.find(item => item.key === 'walk')?.outcome).toBe('unknown');
+  });
 });

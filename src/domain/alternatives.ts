@@ -32,7 +32,8 @@ export function suggestAlternatives(snapshot: Snapshot, criteria: Criteria): Alt
     alternatives.push({ id: `alternative:${candidate.key}:${candidate.after}`, patch: candidate.patch, label: candidate.label, newlyMatchedIds, noLongerMatchedIds, changed: [{ key: candidate.key, before: candidate.before, after: candidate.after, unit: candidate.unit }] });
   }
   const priority = ['personalRentCap', 'maxWalkSeconds', 'minBathrooms'];
-  return priority.flatMap((key) => alternatives.filter((alternative) => alternative.changed[0]!.key === key)
-    .sort((a, b) => b.newlyMatchedIds.length - a.newlyMatchedIds.length || Number(a.changed[0]!.after) - Number(b.changed[0]!.after))
-    .slice(0, 1)).slice(0, 3);
+  const groups = priority.map((key) => alternatives.filter((alternative) => alternative.changed[0]!.key === key)
+    .sort((a, b) => Math.abs(Number(a.changed[0]!.after) - Number(a.changed[0]!.before)) - Math.abs(Number(b.changed[0]!.after) - Number(b.changed[0]!.before)) || b.newlyMatchedIds.length - a.newlyMatchedIds.length));
+  // Offer the smallest useful change within each unit, then another threshold if space remains.
+  return [0, 1, 2].flatMap(index => groups.flatMap(group => group[index] ? [group[index]!] : [])).slice(0, 3);
 }
