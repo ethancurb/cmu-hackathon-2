@@ -30,3 +30,21 @@ export function parseLobos(capture: Capture): ParseResult {
   if (!listings.length) warnings.push('Lobos parser found no listing cards');
   return { listings, captures: [capture], warnings };
 }
+
+/** Parse a Lobos unit-detail page when the URL is a direct, public unit page. */
+export function parseLobosDetail(capture: Capture): ParseResult {
+  const $ = load(capture.html); const text = clean($('body').text()); const warnings: string[] = [];
+  const title = clean($('h2').filter((_, x) => /unit|about this/i.test($(x).text()) === false).first().text()) || 'Lobos unit';
+  const layout = text.match(/(\d+)\s*Beds?\s*[•·]\s*(\d+(?:\.5)?)\s*Baths?/i); const rentMatch = text.match(/\$(\d[\d,]*)\s*\/month/i); const amount = rentMatch ? moneyCents(rentMatch[0]) : null;
+  const addressFirst = text.match(/\/month\s+(\d{1,6}\s+[^,]+?)(?:\s*APT\.?\s*([A-Z0-9-]+))?,\s*(PITTSBURGH,\s*PA\s*\d{5})/i);
+  const unitAndAddress = text.match(/\/month\s+([A-Za-z0-9-]+)\s+([A-Z0-9][^\n]+?\bPA\s*\d{5})/i);
+  const unit = addressFirst?.[2] ?? unitAndAddress?.[1] ?? null;
+  const address = addressFirst ? `${addressFirst[1].trim()}, ${addressFirst[3].trim()}` : unitAndAddress?.[2]?.trim() ?? '';
+  const availabilityRaw = text.match(/Availability:\s*([^\dA-Z]*Available\s*Now|\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1] ?? text.match(/Availability:\s*(Available Now)/i)?.[1] ?? '';
+  if (!layout || amount === null || !address) warnings.push('Lobos detail page did not expose a complete unit row; unknown fields retained');
+  const scopeKey = `lobos-detail-${(unit ?? capture.url.split('/').filter(Boolean).pop() ?? 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  const ev = evidenceFor(capture, scopeKey, 'offer', `${title}; ${unit ?? ''}; ${address}; ${layout?.[0] ?? ''}; ${rentMatch?.[0] ?? ''}; Availability: ${availabilityRaw}`, 'detail unit summary');
+  const listing: ObservedListing = { id: scopeKey, sourceId: capture.sourceId, sourceFamily: 'direct-manager', url: capture.url, scope: 'unit', buildingKey: scopeKey, offerKey: scopeKey, floorPlanKey: null, scopeKey,
+    title: sourced(title, [ev.id]), address: address ? sourced(address, [ev.id]) : unknown(), unitLabel: unit ? sourced(unit, [ev.id]) : unknown(), propertyType: sourced('apartment', [ev.id]), bedrooms: layout ? sourced(Number(layout[1]), [ev.id]) : unknown(), bathrooms: layout ? sourced(Number(layout[2]), [ev.id]) : unknown(), fullBaths: unknown(), halfBaths: unknown(), rent: { basis: 'whole_unit', period: 'month', amount: amount === null ? unknown() : sourced(amount, [ev.id]), upperAmount: unknown(), kind: amount === null ? 'unknown' : 'exact', semantics: 'base_rent' }, availability: availabilityRaw ? sourced(dateValue(availabilityRaw) ?? availabilityRaw, [ev.id]) : unknown(), utilities: [], amenities: [], evidence: [ev] };
+  return { listings: [listing], captures: [capture], warnings };
+}

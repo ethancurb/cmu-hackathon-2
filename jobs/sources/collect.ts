@@ -4,7 +4,7 @@ import type { Criteria, Evidence, Fact, Home, ResearchScope, SourceEntry, Source
 import { SOURCE_REGISTRY, type RegisteredSource } from './registry.js';
 import { fetchPublicPage } from './public-page.js';
 import { parseCmu } from './cmu.js';
-import { parseLobos } from './lobos.js';
+import { parseLobos, parseLobosDetail } from './lobos.js';
 import { parseReinhold } from './manager-page.js';
 import type { EvidenceRow, ObservedListing, ParseResult } from './types.js';
 
@@ -85,6 +85,16 @@ export async function collectSources(criteria: Criteria, onProgress: (message: s
       runs.push(item.run);
       if ('error' in item) { warnings.push(`${item.source.name}: ${item.error.message}`); continue; }
       allListings.push(...item.result.listings); item.result.listings.forEach((listing) => evidence.push(...listing.evidence)); warnings.push(...item.result.warnings);
+      // The public Lobos index exposes card-level leads. Recheck one current Shadyside
+      // unit detail so the seed contains a unit-scoped rent/layout observation too.
+      if (item.source.id === 'lobos-management') {
+        const detailUrl = 'https://lobosmanagement.com/units/bentley-apartments-021-a-03/';
+        try {
+          const detail = parseLobosDetail(await fetchPublicPage(detailUrl, signal));
+          allListings.push(...detail.listings); detail.listings.forEach((listing) => evidence.push(...listing.evidence)); warnings.push(...detail.warnings);
+          item.run.pagesFetched += 1; item.run.urlsAttempted.push(detailUrl); item.run.observations += detail.listings.length;
+        } catch (error) { warnings.push(`Lobos targeted Shadyside detail: ${error instanceof Error ? error.message : String(error)}`); }
+      }
       const capture = item.result.captures[0]; captures.push({ sourceId: capture.sourceId, url: capture.url, fetchedAt: capture.fetchedAt, captureHash: capture.captureHash, bytes: Buffer.byteLength(capture.html) });
       const fileName = `${capture.sourceId}-${capture.fetchedAt.replace(/[:.]/g, '-')}.html`; await writeFile(path.join(rawDir, fileName), capture.html, 'utf8');
     }

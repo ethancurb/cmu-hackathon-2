@@ -1,16 +1,16 @@
 # Source build report
 
-Checked 2026-09-12, with six bounded live HTTP retrievals during implementation. The final compact capture was collected at `2026-09-12T09:45:57.660Z` UTC (`05:45:57 EDT`) and is in [`data/seed/observations.json`](../../data/seed/observations.json). Raw HTML is retained locally under `data/raw/` (ignored by Git), including the timestamped final captures and earlier refreshes.
+Checked 2026-09-12, with eight bounded live HTTP retrievals during implementation. The final compact capture was collected at `2026-09-12T09:49:51.440Z` UTC (`05:49:51 EDT`) and is in [`data/seed/observations.json`](../../data/seed/observations.json). Raw HTML is retained locally under `data/raw/` (ignored by Git), including the timestamped final captures and earlier refreshes.
 
 The collector returned 24 addressed observations from three independent public organizations:
 
 | Source | URL | Observations | Key fields |
 | --- | --- | ---: | --- |
 | CMU Off-Campus Housing | https://offcampus.housing.cmu.edu/listing | 10 | building title/address, advertised bed label when exact, range/price, availability, utilities explicitly listed as included |
-| Lobos Management | https://lobosmanagement.com/units | 12 | unit URL/slug, building title/address, advertised beds/baths, `From` rent lower bound, availability |
+| Lobos Management | https://lobosmanagement.com/units plus targeted public unit page | 13 | 12 index leads plus current Shadyside unit A-3 at 6201 Fifth Avenue with exact 2 bed/1 bath, $1,699/month, and 8/5/2026 availability |
 | Reinhold Residential | https://reinholdresidential.com/properties/shadyside-commons/ | 2 | unit IDs 482-0345 and 482-0303, layout, exact monthly rent, row-scoped availability |
 
-The source run ledger records all three successful pages as `imported`, with 10/12/2 observations and UTC completion timestamps. The broader registry retains Kerpec (bounded page returned no parseable current inventory), Walnut, Zillow Group, Apartments.com, Realtor.com, Zumper and other surveyed sources as link-only or unavailable gaps. No login, CAPTCHA bypass, provider contact or model guessed value was used.
+The source run ledger records all three successful organizations as `imported`, with 10/13/2 observations, two Lobos URLs, and UTC completion timestamps. The broader registry retains Kerpec (bounded page returned no parseable current inventory), Walnut, Zillow Group, Apartments.com, Realtor.com, Zumper and other surveyed sources as link-only or unavailable gaps. No login, CAPTCHA bypass, provider contact or model guessed value was used.
 
 Parsing deliberately preserves uncertainty. CMU's repeated layout table rows do not carry a compatible card scope, so bathrooms remain unknown and a card range is not turned into a unit quote. Lobos `From` prices are represented as lower bounds with unknown upper amount and unknown rent basis; no whole-home qualification is inferred. Reinhold utilities are unknown because the availability page does not state them. CMU cards have source evidence for utility labels under an explicit `Utilities Included` section; each canonical home keeps the six utility names, with absent utilities shown as unknown.
 
@@ -26,8 +26,10 @@ npx tsc --noEmit --pretty false
 passed
 
 validateSnapshot(compact seed wrapped as Snapshot)
-VALID 24 homes, 107 evidence rows, 3 source runs
+VALID 25 homes, 108 evidence rows, 3 source runs
 ```
+
+The targeted second pass fetched `https://lobosmanagement.com/units/bentley-apartments-021-a-03/` and retained its unit-scoped observation separately from the index lead: `A-3`, 6201 Fifth Avenue, 2 beds, 1 bath, $1,699/month, available 2026-08-05. The detail page lists heat as an amenity but does not state utility inclusion, so the six utility statuses remain unknown. Its one-bath count is an explicit near-match to the 2+ bath criterion.
 
 The live snapshot has no route records yet; Gates Hillman walking qualification therefore remains unknown until the geographic worker computes routes. The observed public listing dates and prices are point-in-time evidence, not a guarantee of current vacancy.
 
