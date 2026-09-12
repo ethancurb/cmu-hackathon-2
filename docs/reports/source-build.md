@@ -1,6 +1,6 @@
 # Source build report
 
-Checked 2026-09-12, with five bounded live HTTP retrievals during implementation. The final compact capture was collected at `2026-09-12T09:44:17.197Z` UTC (`05:44:17 EDT`) and is in [`data/seed/observations.json`](../../data/seed/observations.json). Raw HTML is retained locally under `data/raw/` (ignored by Git), including the timestamped final captures and earlier refreshes.
+Checked 2026-09-12, with six bounded live HTTP retrievals during implementation. The final compact capture was collected at `2026-09-12T09:45:57.660Z` UTC (`05:45:57 EDT`) and is in [`data/seed/observations.json`](../../data/seed/observations.json). Raw HTML is retained locally under `data/raw/` (ignored by Git), including the timestamped final captures and earlier refreshes.
 
 The collector returned 24 addressed observations from three independent public organizations:
 
@@ -26,9 +26,11 @@ npx tsc --noEmit --pretty false
 passed
 
 validateSnapshot(compact seed wrapped as Snapshot)
-VALID 24 homes, 106 evidence rows, 3 source runs
+VALID 24 homes, 107 evidence rows, 3 source runs
 ```
 
 The live snapshot has no route records yet; Gates Hillman walking qualification therefore remains unknown until the geographic worker computes routes. The observed public listing dates and prices are point-in-time evidence, not a guarantee of current vacancy.
 
 The second live refresh was a real HTTP retrieval (not fixture replay). SHA-256 comparisons showed CMU changed (`bbd64339…` to `fa67b7c1…`) and Lobos changed (`b7cc983e…` to `b43fd1c8…`), while Reinhold was unchanged (`aa92a891…` on both captures). The final parser count remained 10/12/2; unchanged Reinhold facts retain their new observation timestamp in the seed rather than being treated as newly changed inventory.
+
+The documented CLI was also exercised with `node --import tsx jobs/ingest.ts --market pittsburgh --limit 6 --refresh`. It returned `ingest-7f8029a46438`, fetched 3 pages, imported 6 requested IDs, quarantined 31 unknown fields, and reported no failures. The canonical seed was refreshed by that live invocation and then passed strict snapshot validation with 24 homes, 107 evidence rows, and 3 scoped source runs.
