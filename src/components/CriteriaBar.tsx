@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, RotateCcw, SlidersHorizontal, Sparkles } from 'lucide-react';
 import type { Criteria, CriteriaPatch, UtilityName } from '../domain/schema.js';
 import { capWhole, dollars, utilities } from '../lib/view.js';
 
@@ -12,6 +12,7 @@ export function CriteriaBar({ criteria, baseline, onPatch, onRevert, onDestinati
   const [walk, setWalk] = useState(String(criteria.maxWalkSeconds / 60));
   const [beds, setBeds] = useState(criteria.bedrooms);
   const [baths, setBaths] = useState(criteria.minBathrooms);
+  const [niche, setNiche] = useState(criteria.nicheQuery ?? '');
   const [mobileOpen, setMobileOpen] = useState(false);
   const isChanged = JSON.stringify(criteria) !== JSON.stringify(baseline);
   const toggle = (key: string) => setOpen(value => value === key ? null : key);
@@ -29,6 +30,8 @@ export function CriteriaBar({ criteria, baseline, onPatch, onRevert, onDestinati
       <span className="criteria-divider">·</span>
       <div className="criterion"><button className="criterion-trigger" type="button" onClick={() => { setWalk(String(criteria.maxWalkSeconds / 60)); toggle('walk'); }} aria-expanded={open === 'walk'}><strong>{Math.round(criteria.maxWalkSeconds / 60)} min walk</strong><ChevronDown size={13}/></button>{open === 'walk' && <div className="criterion-pop"><label htmlFor="max-walk">Maximum computed walking time in minutes</label><input id="max-walk" type="number" min="1" max="120" value={walk} onChange={e => setWalk(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') close(); }} /><p>Only valid foot routes to the mapped entrance can qualify.</p><button className="plain-button primary-button" onClick={() => { const value = Number(walk); if (Number.isFinite(value) && value > 0) onPatch({ maxWalkSeconds: Math.round(value * 60) }); close(); }}>Apply</button></div>}</div>
       <span>to</span> <button className="destination-link" onClick={onDestinationEdit}>{criteria.destination.label}</button>
+      <span className="criteria-divider">·</span>
+      <div className="criterion"><button className={`criterion-trigger niche-trigger ${criteria.nicheQuery ? 'has-niche' : ''}`} type="button" onClick={() => { setNiche(criteria.nicheQuery ?? ''); toggle('niche'); }} aria-expanded={open === 'niche'}><Sparkles size={13}/> {criteria.nicheQuery ? <strong>“{criteria.nicheQuery}”</strong> : <span>Ask for anything</span>}<ChevronDown size={13}/></button>{open === 'niche' && <div className="criterion-pop niche-pop"><label htmlFor="niche-query">Describe a requirement the filters above cannot express</label><input id="niche-query" placeholder="e.g. close to a Chinese supermarket" maxLength={200} value={niche} onChange={e => setNiche(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') close(); if (e.key === 'Enter' && niche.trim()) { onPatch({ nicheQuery: niche.trim() }); close(); } }} /><p>An assistant interprets the saved listing data. Matches are highlighted; your requirements above are never relaxed.</p><div className="niche-pop-actions">{criteria.nicheQuery && <button className="plain-button" onClick={() => { onPatch({ nicheQuery: null }); setNiche(''); close(); }}>Clear</button>}<button className="plain-button primary-button" disabled={!niche.trim()} onClick={() => { onPatch({ nicheQuery: niche.trim() }); close(); }}>Ask</button></div></div>}</div>
       <div className="criteria-tail"><button className="more-trigger" onClick={() => toggle('more')} aria-expanded={open === 'more'}><SlidersHorizontal size={15}/> More preferences</button>{isChanged && <button className="revert-trigger" onClick={onRevert}><RotateCcw size={14}/> Revert to original</button>}</div>
     </h1>
     {isChanged && <div className="baseline-note">Original search: {dollars(baseline.personalRentCap)} share · {baseline.allocation.occupants} equal shares · {baseline.bedrooms} beds / {baseline.minBathrooms}+ baths · {baseline.maxWalkSeconds / 60} min walk <span>→ current search above</span></div>}

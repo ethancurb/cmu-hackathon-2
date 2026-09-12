@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
-import type { Criteria, EvaluatedHome, Home, Snapshot } from '../domain/schema.js';
+import type { Criteria, EvaluatedHome, Home, NicheAssessment, Snapshot } from '../domain/schema.js';
 import { destinationName, minute, routeForHome, title } from '../lib/view.js';
 
-type Props = { snapshot: Snapshot; criteria: Criteria; ordered: { home: Home; result: EvaluatedHome }[]; selectedId: string | null; hoveredId: string | null; onSelect: (id: string) => void; onPinDestination: (lat: number, lon: number) => void; pinMode: boolean };
+type Props = { snapshot: Snapshot; criteria: Criteria; ordered: { home: Home; result: EvaluatedHome }[]; nicheById?: Map<string, NicheAssessment>; selectedId: string | null; hoveredId: string | null; onSelect: (id: string) => void; onPinDestination: (lat: number, lon: number) => void; pinMode: boolean };
 
-export function MapPanel({ snapshot, criteria, ordered, selectedId, hoveredId, onSelect, onPinDestination, pinMode }: Props) {
+export function MapPanel({ snapshot, criteria, ordered, nicheById, selectedId, hoveredId, onSelect, onPinDestination, pinMode }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
@@ -59,7 +59,7 @@ export function MapPanel({ snapshot, criteria, ordered, selectedId, hoveredId, o
       points.push([coordinate.lat, coordinate.lon]);
       const chosen = home.id === selectedId;
       const hovered = home.id === hoveredId;
-      const marker = L.divIcon({ className: `home-marker fit-${result.fit} ${chosen ? 'is-selected' : ''} ${hovered ? 'is-hovered' : ''} ${selectedId && !chosen ? 'is-dimmed' : ''}`, html: `<span>${index + 1}</span>`, iconSize: [30,30], iconAnchor: [15,15] });
+      const marker = L.divIcon({ className: `home-marker fit-${result.fit} ${nicheById?.has(home.id) ? 'is-niche' : ''} ${chosen ? 'is-selected' : ''} ${hovered ? 'is-hovered' : ''} ${selectedId && !chosen ? 'is-dimmed' : ''}`, html: `<span>${index + 1}</span>`, iconSize: [30,30], iconAnchor: [15,15] });
       L.marker([coordinate.lat, coordinate.lon], { icon: marker, keyboard: true, title: `${index + 1}. ${title(home)} · ${minute(routeForHome(snapshot, home, criteria)?.durationSeconds)}` }).on('click', () => clickHandler.current(home.id)).addTo(group);
     });
     ordered.forEach(({ home }) => {
@@ -71,6 +71,21 @@ export function MapPanel({ snapshot, criteria, ordered, selectedId, hoveredId, o
       const route = home && routeForHome(snapshot, home, criteria);
       if (route?.status === 'ok' && route.geometry?.coordinates?.length) {
         L.polyline(route.geometry.coordinates.map(([lon, lat]): [number, number] => [lat, lon]), { className: 'selected-foot-route', color: '#2456a8', weight: 4, opacity: .94 }).addTo(group);
+      }
+    }
+    if (selectedId && nicheById?.has(selectedId)) {
+      const home = snapshot.homes.find(h => h.id === selectedId);
+      const assessment = nicheById.get(selectedId)!;
+      for (const placeId of assessment.citedPlaceIds) {
+        const place = home?.nearby.find(p => p.id === placeId);
+        if (!place || !home?.coordinate.value) continue;
+        const placeHtml = document.createElement('span'); placeHtml.className = 'niche-place-content';
+        const dot = document.createElement('span'); dot.className = 'niche-place-dot';
+        const label = document.createElement('span'); label.className = 'niche-place-label'; label.textContent = `${place.name} \u00b7 ${Math.round(place.distanceMeters)} m`;
+        placeHtml.append(dot, label);
+        L.marker([place.coordinate.lat, place.coordinate.lon], { icon: L.divIcon({ className: 'niche-place-marker', html: placeHtml, iconSize: [150, 24], iconAnchor: [8, 12] }), keyboard: false, interactive: false }).addTo(group);
+        L.polyline([[home.coordinate.value.lat, home.coordinate.value.lon], [place.coordinate.lat, place.coordinate.lon]], { className: 'niche-tie', dashArray: '4 5', weight: 2, opacity: .85, interactive: false }).addTo(group);
+        points.push([place.coordinate.lat, place.coordinate.lon]);
       }
     }
     allBounds.current = points.length > 1 ? L.latLngBounds(points) : null;
@@ -87,7 +102,7 @@ export function MapPanel({ snapshot, criteria, ordered, selectedId, hoveredId, o
       else instance.setView([dest.lat, dest.lon], 15, { animate: false });
     }
     requestAnimationFrame(() => instance.invalidateSize());
-  }, [snapshot, criteria, ordered, selectedId, hoveredId, sizeRevision]);
+  }, [snapshot, criteria, ordered, nicheById, selectedId, hoveredId, sizeRevision]);
 
   const selected = selectedId ? snapshot.homes.find(h => h.id === selectedId) : undefined;
   const route = selected && routeForHome(snapshot, selected, criteria);

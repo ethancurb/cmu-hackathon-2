@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Compass, GitCompareArrows, List, Map as MapIcon, Plus, Search, X } from 'lucide-react';
-import type { Criteria, CriteriaPatch, Destination, EvaluatedHome, Home, SearchResult, Snapshot } from './domain/schema.js';
+import type { Criteria, CriteriaPatch, Destination, EvaluatedHome, Home, NicheResult, SearchResult, Snapshot } from './domain/schema.js';
 import { CriteriaSchema, validateSnapshot } from './domain/schema.js';
 import { applyCriteriaPatch, evaluateSearch } from './domain/engine.js';
+import { rankByCoreCloseness } from './domain/niche.js';
+import { NicheGroup } from './components/NicheGroup.js';
 import { api, type Bootstrap, type Job } from './lib/api.js';
 import { getSession, type SessionState } from './lib/auth.js';
 import { clearStored, readStored, writeStored, type SavedHomeLabel, type Stored } from './lib/storage.js';
@@ -33,6 +35,9 @@ export default function App() {
   const [shortlistIds, setShortlistIds] = useState<string[]>([]);
   const [shortlistMeta, setShortlistMeta] = useState<Record<string, SavedHomeLabel>>({});
   const [job, setJob] = useState<Job | null>(null);
+  const [nicheResult, setNicheResult] = useState<NicheResult | null>(null);
+  const [nicheBusy, setNicheBusy] = useState(false);
+  const nicheAbortRef = useRef<AbortController | null>(null);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [destinationOpen, setDestinationOpen] = useState(false);
@@ -210,6 +215,32 @@ export default function App() {
     }).catch(() => { /* immediate validated client result remains usable */ });
   }, [snapshot, criteria]);
 
+  // One model call per (niche query, snapshot); the server caches by the same key. Core-dial
+  // edits change neither dependency, so they re-rank the cached verdicts without a call.
+  const nicheQuery = criteria?.nicheQuery?.trim() || null;
+  useEffect(() => {
+    nicheAbortRef.current?.abort();
+    if (!nicheQuery || !snapshot) { setNicheResult(null); setNicheBusy(false); return; }
+    const controller = new AbortController();
+    nicheAbortRef.current = controller;
+    setNicheBusy(true);
+    api.niche(snapshot.id, nicheQuery, controller.signal)
+      .then(result => { if (!controller.signal.aborted) { setNicheResult(result); setNicheBusy(false); } })
+      .catch(e => { if (!controller.signal.aborted) { setNicheResult(null); setNicheBusy(false); setNotice(`Niche request unavailable: ${e instanceof Error ? e.message : String(e)}. Core filters are unaffected.`); } });
+    return () => controller.abort();
+  }, [nicheQuery, snapshot?.id]);
+
+  const nicheCurrent = nicheResult && snapshot && nicheQuery
+    && nicheResult.snapshotId === snapshot.id
+    && nicheResult.query.trim().toLowerCase() === nicheQuery.toLowerCase() ? nicheResult : null;
+  const nicheRanked = useMemo(
+    () => nicheCurrent && activeResult && snapshot ? rankByCoreCloseness(nicheCurrent.assessments, activeResult.results, snapshot) : [],
+    [nicheCurrent, activeResult, snapshot],
+  );
+  const nicheById = useMemo(() => new Map(nicheRanked.map(entry => [entry.homeId, entry.assessment])), [nicheRanked]);
+  const cancelNiche = () => { nicheAbortRef.current?.abort(); setNicheBusy(false); patch({ nicheQuery: null }); setNotice('Niche request cancelled. Nothing about your search changed.'); };
+  const clearNiche = () => { nicheAbortRef.current?.abort(); setNicheBusy(false); patch({ nicheQuery: null }); };
+
   useEffect(() => {
     if (!job || ['succeeded','partial','failed','cancelled'].includes(job.status)) return;
     let cancelled = false;
@@ -322,15 +353,16 @@ export default function App() {
           {activeResult?.discoveryNeeded && <div className="discovery-needed"><Compass size={18}/><div><strong>More research needed for this search</strong><p>{activeResult.discoveryReason || 'The current research scope does not cover these requirements.'} Existing records are still shown with their evidence.</p></div><button className="plain-button" onClick={startDiscovery} disabled={!bootstrap.capabilities.discovery}>Search now <ArrowRight size={14}/></button></div>}
           {!currentMarketHasResearch && <div className="market-empty"><span className="eyebrow">New market</span><h2>No saved research for {criteria.market.label}, {criteria.market.region}.</h2><p>The Pittsburgh snapshot cannot represent homes in this city. Search supported sources to build a new inventory.</p><button className="plain-button primary-button" onClick={startDiscovery} disabled={!bootstrap.capabilities.discovery}>Find homes here <ArrowRight size={16}/></button></div>}
           {activeResult && <>
+            {nicheQuery && <NicheGroup query={nicheQuery} ranked={nicheRanked} snapshot={snapshot} criteria={criteria} busy={nicheBusy} degraded={nicheCurrent?.degraded ?? null} homesWithoutData={nicheCurrent?.homesWithoutData ?? 0} selectedId={selectedHomeId} onSelect={selectHome} onCancel={cancelNiche} onClear={clearNiche} onHover={setHoveredId}/>}
             {activeResult.counts.matches === 0 && <div className="zero-banner"><strong>No options meet all requirements in this snapshot.</strong><span>{activeResult.counts.needsVerification} need evidence for one or more requirements; {activeResult.counts.nearMatches} have a known deviation. The search has not been relaxed.</span></div>}
             {activeResult.counts.matches === 0 && <Alternatives alternatives={activeResult.alternatives} criteria={criteria} snapshot={snapshot} onApply={patch} onSelectHome={selectHome}/>} 
             {ordered.length === 0 && <div className="list-empty"><Search size={22}/><h3>No homes recorded in this snapshot.</h3><p>See Coverage for searched sources and limits, or run more discovery. Unknown listing data is never filled in to make a match.</p></div>}
-            {(['matches','near_match','needs_verification'] as const).map(fit => { const group = ordered.filter(x => x.result.fit === fit); return group.length > 0 && <div key={fit}><section className="home-group"><div className="group-heading"><span>{fit === 'matches' ? 'Meets requirements' : fit === 'near_match' ? <>Near matches{criteria.sort === 'smallest_change' && <span className="group-sort-context"> · smallest changes first</span>}</> : 'Needs verification'}</span><div className="group-tools"><span className="mono">{group.length} {group.length === 1 ? 'option' : 'options'}</span>{fit === ordered[0]?.result.fit && <select aria-label="Sort options within each group" value={criteria.sort} onChange={e => setCriteria({ ...criteria, sort: e.target.value as Criteria['sort'] })}><option value="smallest_change">Sort: smallest change</option><option value="personal_rent">Sort: your rent</option><option value="walk">Sort: walk</option><option value="unresolved_costs">Sort: cost unknowns</option><option value="observed_at">Sort: last seen</option></select>}</div></div>{group.map(({ home, result: item }) => <HomeRow key={home.id} snapshot={snapshot} criteria={criteria} home={home} result={item} number={ordered.findIndex(x => x.home.id === home.id)+1} selected={selectedHomeId === home.id} saved={shortlistIds.includes(home.id)} comparing={compareIds.includes(home.id)} onSelect={() => selectHome(home.id)} onSave={() => toggleShortlist(home.id)} onCompare={() => toggleCompare(home.id)} onHover={hovered => setHoveredId(hovered ? home.id : null)}/>)}</section>{fit === 'matches' && <Alternatives alternatives={activeResult.alternatives} criteria={criteria} snapshot={snapshot} onApply={patch} onSelectHome={selectHome}/>}</div>; })}
+            {(['matches','near_match','needs_verification'] as const).map(fit => { const group = ordered.filter(x => x.result.fit === fit); return group.length > 0 && <div key={fit}><section className="home-group"><div className="group-heading"><span>{fit === 'matches' ? 'Meets requirements' : fit === 'near_match' ? <>Near matches{criteria.sort === 'smallest_change' && <span className="group-sort-context"> · smallest changes first</span>}</> : 'Needs verification'}</span><div className="group-tools"><span className="mono">{group.length} {group.length === 1 ? 'option' : 'options'}</span>{fit === ordered[0]?.result.fit && <select aria-label="Sort options within each group" value={criteria.sort} onChange={e => setCriteria({ ...criteria, sort: e.target.value as Criteria['sort'] })}><option value="smallest_change">Sort: smallest change</option><option value="personal_rent">Sort: your rent</option><option value="walk">Sort: walk</option><option value="unresolved_costs">Sort: cost unknowns</option><option value="observed_at">Sort: last seen</option></select>}</div></div>{group.map(({ home, result: item }) => <HomeRow key={home.id} snapshot={snapshot} criteria={criteria} home={home} result={item} number={ordered.findIndex(x => x.home.id === home.id)+1} selected={selectedHomeId === home.id} saved={shortlistIds.includes(home.id)} comparing={compareIds.includes(home.id)} onSelect={() => selectHome(home.id)} onSave={() => toggleShortlist(home.id)} onCompare={() => toggleCompare(home.id)} onHover={hovered => setHoveredId(hovered ? home.id : null)} niche={nicheById.get(home.id)}/>)}</section>{fit === 'matches' && <Alternatives alternatives={activeResult.alternatives} criteria={criteria} snapshot={snapshot} onApply={patch} onSelectHome={selectHome}/>}</div>; })}
             <div className="list-footer"><p>This is a saved research snapshot. A listing observation does not confirm current vacancy. Verify terms and availability at the original source.</p><button className="text-button" onClick={() => setImportOpen(true)}>Add a listing to check <ArrowUpRight size={14}/></button></div>
           </>}
         </>}
       </div>
-      <MapPanel snapshot={snapshot} criteria={criteria} ordered={ordered} selectedId={selectedHomeId} hoveredId={hoveredId} onSelect={selectHome} onPinDestination={pinDestination} pinMode={pinMode}/>
+      <MapPanel snapshot={snapshot} criteria={criteria} ordered={ordered} nicheById={nicheById} selectedId={selectedHomeId} hoveredId={hoveredId} onSelect={selectHome} onPinDestination={pinDestination} pinMode={pinMode}/>
     </main>
     <ShortlistRail items={shortlistItems} compareCount={compareIds.length} onCompare={() => setCompareOpen(true)} onRemove={toggleShortlist} onSelect={selectHome}/>
     {compareOpen && <CompareSheet items={compareItems} snapshot={snapshot} criteria={criteria} onClose={() => setCompareOpen(false)} onRemove={toggleCompare}/>}<div className="sr-only" role="status" aria-live="polite">{activeResult ? `${activeResult.counts.matches} options meet requirements, ${activeResult.counts.needsVerification} need verification, ${activeResult.counts.nearMatches} near matches.` : ''}</div>

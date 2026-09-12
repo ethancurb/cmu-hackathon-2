@@ -1,4 +1,4 @@
-import type { Criteria, Destination, Snapshot } from '../domain/schema.js';
+import type { Criteria, Destination, NicheResult, Snapshot } from '../domain/schema.js';
 
 export type Job = {
   id: string; type: 'discovery' | 'routes';
@@ -27,4 +27,6 @@ export const api = {
   pinDestination: (label: string, coordinate: Destination['coordinate']) => json<{ candidates: Destination[] }>('/api/destination', { method: 'POST', body: JSON.stringify({ label, coordinate }) }),
   job: (id: string) => json<{ job: Job }>(`/api/jobs/${encodeURIComponent(id)}`),
   import: (sourceId: string, url: string, text: string, criteria: Criteria, snapshotId: string) => json<{ job: Job }>('/api/import', { method: 'POST', body: JSON.stringify({ sourceId, url, text: text.trim() || undefined, criteria, snapshotId }) }),
+  // Aborting `signal` cancels the model call server-side; there is no job to poll.
+  niche: (snapshotId: string, query: string, signal: AbortSignal) => json<NicheResult>('/api/niche', { method: 'POST', body: JSON.stringify({ snapshotId, query }), signal }),
 };

@@ -7,7 +7,9 @@ import { createWorkflows } from './workflows.js';
 import { savedSeed } from './research.js';
 import { readAuthConfig } from './auth.js';
 
+// Optional local secrets. Existing shell variables win; .env.local takes priority over .env.
 if (existsSync('.env.local')) loadEnvFile('.env.local');
+if (existsSync('.env')) loadEnvFile('.env');
 const authConfig = readAuthConfig(process.env);
 const store = createSnapshotStore(path.join(process.cwd(), 'data'));
 try { await store.loadCurrent(); }

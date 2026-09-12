@@ -124,6 +124,10 @@ export const CriteriaSchema = z.object({
   bedrooms: z.number().nonnegative(), minBathrooms: z.number().nonnegative(), propertyTypes: z.array(z.enum(['house', 'apartment', 'room', 'other'])).min(1), maxWalkSeconds: z.number().nonnegative(),
   moveIn: z.null(), leaseMonths: z.null(), mustHaveAmenities: z.array(z.string().min(1)), niceToHaveAmenities: z.array(z.string().min(1)), requiredIncludedUtilities: z.array(UtilityNameSchema),
   sort: z.enum(['smallest_change', 'personal_rent', 'walk', 'unresolved_costs', 'observed_at']),
+  // A plain-language requirement no core dial can express. Selects and highlights; never
+  // relaxes or silently satisfies a core dial. Defaulted so criteria persisted by an
+  // earlier browser session still parse.
+  nicheQuery: z.string().min(1).max(200).nullable().default(null),
 }).strict().superRefine((criteria, ctx) => {
   const invalidEqual = criteria.allocation.kind === 'equal' && criteria.allocation.personalShareBps !== null;
   const invalidCustom = criteria.allocation.kind === 'custom' && criteria.allocation.personalShareBps === null;
@@ -134,6 +138,7 @@ export const CriteriaPatchSchema = z.object({
   personalRentCap: CentsSchema, allocation: z.object({ occupants: z.number().int().positive(), kind: z.enum(['equal', 'custom']), personalShareBps: z.number().int().gte(1).lte(10000).nullable() }).strict(),
   bedrooms: z.number().nonnegative(), minBathrooms: z.number().nonnegative(), propertyTypes: z.array(z.enum(['house', 'apartment', 'room', 'other'])).min(1), maxWalkSeconds: z.number().nonnegative(),
   mustHaveAmenities: z.array(z.string().min(1)), niceToHaveAmenities: z.array(z.string().min(1)), requiredIncludedUtilities: z.array(UtilityNameSchema),
+  nicheQuery: z.string().min(1).max(200).nullable(),
 }).partial().strict();
 
 export const ResearchScopeSchema = z.object({
@@ -168,12 +173,50 @@ export type EvaluatedHome = { homeId: string; fit: 'matches' | 'near_match' | 'n
 export type Alternative = { id: string; patch: CriteriaPatch; label: string; newlyMatchedIds: string[]; noLongerMatchedIds: string[]; changed: { key: string; before: number | string; after: number | string; unit: string }[] };
 export type SearchResult = { snapshotId: string; requestId: string; criteria: Criteria; results: EvaluatedHome[]; alternatives: Alternative[]; counts: { total: number; matches: number; nearMatches: number; needsVerification: number }; discoveryNeeded: boolean; discoveryReason: string | null };
 
+// ---------------------------------------------------------------------------
+// Niche filtering. Deliberately parallel to EvaluatedHome, never inside it: a model
+// verdict must not be able to change whether a home meets the renter's stated
+// requirements. See CONTEXT.md and docs/superpowers/plans/2026-09-12-niche-filters.md.
+// ---------------------------------------------------------------------------
+
+/** What a niche verdict rests on. A model assessment is never described as a measurement. */
+export type NicheProvenance = 'listing_data' | 'model_assessment';
+
+/**
+ * One home's answer to one niche query. `mitigates` names a core constraint the model
+ * thinks this home compensates for; it is context only and never changes `fit`.
+ */
+export const NicheAssessmentSchema = z.object({
+  homeId: IdSchema,
+  matches: z.boolean(),
+  /** `partial` when the model stretched the request — Korean grocery for "Chinese supermarket". */
+  confidence: z.enum(['strong', 'partial']),
+  reason: z.string().min(1).max(400),
+  provenance: z.enum(['listing_data', 'model_assessment']),
+  /** NearbyPlace ids already on the home. A verdict citing an absent place is dropped. */
+  citedPlaceIds: z.array(IdSchema),
+  mitigates: z.object({ constraintKey: z.string().min(1), reason: z.string().min(1).max(400) }).strict().nullable(),
+}).strict();
+
+export const NicheResultSchema = z.object({
+  query: z.string().min(1), snapshotId: IdSchema, assessments: z.array(NicheAssessmentSchema),
+  model: z.string().min(1), generatedAt: ISODateTimeSchema,
+  /** Set when the call timed out, was cancelled, or returned unusable output. */
+  degraded: z.string().nullable(),
+  /** Homes the snapshot held no judgeable detail for, so recall can be stated honestly. */
+  homesWithoutData: z.number().int().nonnegative(),
+}).strict();
+
+export type NicheAssessment = z.infer<typeof NicheAssessmentSchema>;
+export type NicheResult = z.infer<typeof NicheResultSchema>;
+
 export const SEED_CRITERIA: Criteria = CriteriaSchema.parse({
   market: { label: 'Pittsburgh / CMU', region: 'PA', country: 'US' },
   destination: { id: 'destination:gates-hillman', version: 'osm-node-1704796692-v1', label: 'Gates Hillman — mapped entrance', coordinate: { lat: 40.4440338, lon: -79.9445593 }, evidenceIds: ['destination:gates-hillman:osm'], caveat: 'Mapped entrance; physical entrance verification is pending.' },
   personalRentCap: 120000, allocation: { occupants: 2, kind: 'equal', personalShareBps: null }, bedrooms: 2, minBathrooms: 2,
   propertyTypes: ['house', 'apartment'], maxWalkSeconds: 1200, moveIn: null, leaseMonths: null,
   mustHaveAmenities: [], niceToHaveAmenities: [], requiredIncludedUtilities: [], sort: 'smallest_change',
+  nicheQuery: null,
 });
 
 const isSearchIndexOnly = (ids: string[], evidence: Map<string, Evidence>) => ids.length > 0 && ids.every((id) => evidence.get(id)?.channel === 'search_index');
